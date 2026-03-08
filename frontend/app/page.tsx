@@ -46,6 +46,17 @@ type AppSettings = {
   dashboard_title: string;
 };
 
+type PieClickData = {
+  category?: string;
+  amount?: number;
+  value?: number;
+  name?: string;
+  payload?: {
+    category?: string;
+    amount?: number;
+  };
+};
+
 const monthNames: Record<number, string> = {
   1: "ינואר",
   2: "פברואר",
@@ -249,9 +260,26 @@ export default function HomePage() {
     return transactions.filter((tx) => tx.category === category);
   }
 
-  function handlePieClick(data: SummaryCategory) {
-    setExpandedCategory((prev) => (prev === data.category ? null : data.category));
-    setClickedSliceInfo(data);
+  function handlePieClick(data: PieClickData) {
+    const category =
+      data.category ??
+      data.payload?.category ??
+      data.name;
+
+    const amount =
+      data.amount ??
+      data.payload?.amount ??
+      data.value;
+
+    if (!category || amount === undefined) {
+      return;
+    }
+
+    setExpandedCategory((prev) => (prev === category ? null : category));
+    setClickedSliceInfo({
+      category,
+      amount: Number(amount),
+    });
 
     if (clickInfoTimeoutRef.current) {
       clearTimeout(clickInfoTimeoutRef.current);
@@ -420,7 +448,7 @@ export default function HomePage() {
                     `${formatCurrency(Number(value))} (${((percent ?? 0) * 100).toFixed(0)}%)`
                   }
                   labelLine
-                  onClick={(data: SummaryCategory) => handlePieClick(data)}
+                  onClick={(data) => handlePieClick(data as PieClickData)}
                 >
                   {chartData.map((entry, index) => (
                     <Cell
