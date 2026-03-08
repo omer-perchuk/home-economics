@@ -1,0 +1,20 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# Environment
+.env
+
+# Node
+node_modules/
+.next/
+
+# Database
+*.db
+data/
+
+# Mac
+.DS_Store
+
+.idea/
