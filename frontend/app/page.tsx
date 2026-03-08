@@ -107,7 +107,7 @@ export default function HomePage() {
     type: "expense",
   });
 
-  const backendUrl = "http://192.168.68.101:8000";
+  const backendUrl = "https://home-economics.onrender.com";
 
   useEffect(() => {
     setMounted(true);
@@ -159,7 +159,6 @@ export default function HomePage() {
       setSummary(summaryData);
       setTransactions(txData);
       setExpandedCategory(null);
-      setClickedSliceInfo(null);
     } catch (err) {
       setError(String(err));
     } finally {
@@ -417,8 +416,8 @@ export default function HomePage() {
                   dataKey="amount"
                   nameKey="category"
                   outerRadius={90}
-                label={({ value, percent }) =>
-                `${formatCurrency(Number(value))} (${((percent ?? 0) * 100).toFixed(0)}%)`
+                  label={({ value, percent }) =>
+                    `${formatCurrency(Number(value))} (${((percent ?? 0) * 100).toFixed(0)}%)`
                   }
                   labelLine
                   onClick={(data: SummaryCategory) => handlePieClick(data)}
