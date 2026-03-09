@@ -120,3 +120,27 @@ def debug_families(db: Session = Depends(get_db)):
         })
 
     return result
+
+@app.post("/debug/fix-transaction-families")
+def fix_transaction_families(db: Session = Depends(get_db)):
+    from app.db.models import Transaction, User
+
+    transactions = db.query(Transaction).all()
+    updated = 0
+
+    for transaction in transactions:
+        if not transaction.user_phone:
+            continue
+
+        user = db.query(User).filter(User.phone == transaction.user_phone).first()
+        if not user:
+            continue
+
+        if transaction.family_id != user.family_id:
+            transaction.family_id = user.family_id
+            transaction.user_id = user.id
+            updated += 1
+
+    db.commit()
+
+    return {"updated_transactions": updated}
