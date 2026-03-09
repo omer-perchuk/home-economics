@@ -20,6 +20,10 @@ def load_families():
                 db.add(family)
                 db.commit()
                 db.refresh(family)
+            else:
+                family.twilio_whatsapp_number = family_data["twilio_number"]
+                db.commit()
+                db.refresh(family)
 
             for member in family_data["members"]:
                 existing_user = db.query(User).filter(
@@ -33,6 +37,9 @@ def load_families():
                         family_id=family.id,
                     )
                     db.add(user)
+                else:
+                    existing_user.name = member["name"]
+                    existing_user.family_id = family.id
 
             db.commit()
 
