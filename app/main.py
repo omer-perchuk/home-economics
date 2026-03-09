@@ -19,11 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:3001",
-        "https://home-economics-flax.vercel.app"
-    ],
+    allow_origins=["*"],   # זמנית לפתור את הבעיה
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
