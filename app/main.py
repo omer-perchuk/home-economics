@@ -5,26 +5,39 @@ from sqlalchemy.orm import Session
 
 from app.services.parser_service import parse_expense_text
 from app.services.report_service import get_category_summary
+from app.services.family_loader import load_families
+
 from app.db.database import Base, engine, get_db
 from app.db.models import Transaction
+
 from app.routes.whatsapp import router as whatsapp_router
 from app.routes.dashboard_api import router as dashboard_api_router
 from app.routes.settings_api import router as settings_api_router
 
+
+# יצירת הטבלאות במסד הנתונים
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
-from fastapi.middleware.cors import CORSMiddleware
 
+# טעינת המשפחות מהקובץ בעת עליית השרת
+@app.on_event("startup")
+def startup_event():
+    load_families()
+
+
+# CORS (מאפשר לפרונטאנד לגשת ל-API)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],   # זמנית לפתור את הבעיה
+    allow_origins=["*"],  # זמנית לפיתוח
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+
+# Routers
 app.include_router(whatsapp_router)
 app.include_router(dashboard_api_router)
 app.include_router(settings_api_router)
@@ -82,3 +95,28 @@ def get_transactions(db: Session = Depends(get_db)):
 @app.get("/report/categories")
 def category_report(db: Session = Depends(get_db)):
     return get_category_summary(db)
+
+@app.get("/debug/families")
+def debug_families(db: Session = Depends(get_db)):
+    from app.db.models import Family, User
+
+    families = db.query(Family).all()
+
+    result = []
+
+    for f in families:
+        users = db.query(User).filter(User.family_id == f.id).all()
+
+        result.append({
+            "family": f.name,
+            "twilio_number": f.twilio_whatsapp_number,
+            "members": [
+                {
+                    "name": u.name,
+                    "phone": u.phone
+                }
+                for u in users
+            ]
+        })
+
+    return result

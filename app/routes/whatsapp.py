@@ -20,6 +20,7 @@ from app.services.state_service import (
     clear_user_state,
 )
 from app.services.command_service import detect_command
+from app.services.family_service import get_user_and_family_by_phone
 from app.services.whatsapp_format_service import (
     format_summary_for_whatsapp_short,
     format_transactions_for_whatsapp_short,
@@ -70,6 +71,16 @@ async def whatsapp_webhook(
 
     message = form.get("Body", "").strip().lower()
     sender = form.get("From", "")
+
+    user, family = get_user_and_family_by_phone(db, sender)
+
+    if not user or not family:
+        background_tasks.add_task(
+            send_whatsapp_message,
+            sender,
+            "המספר שלך לא רשום במערכת. צריך להוסיף אותך קודם בקובץ המשפחות."
+        )
+        return build_empty_ok_response()
 
     print("Incoming message:", message)
 
@@ -133,7 +144,7 @@ async def whatsapp_webhook(
             return build_empty_ok_response()
 
         month, year = parsed_month
-        summary = get_month_summary(db, month, year)
+        summary = get_month_summary(db, month, year, family.id)
 
         clear_user_state(sender)
 
@@ -241,7 +252,7 @@ async def whatsapp_webhook(
     # פקודת מחיקה
     # ===============================
     if command == "delete":
-        transactions = get_current_month_transactions(db)
+        transactions = get_current_month_transactions(db, family.id)
 
         if not transactions:
             background_tasks.add_task(
@@ -277,8 +288,7 @@ async def whatsapp_webhook(
     # פקודת עדכון
     # ===============================
     if command == "update":
-        transactions = get_current_month_transactions(db)
-
+        transactions = get_current_month_transactions(db, family.id)
         if not transactions:
             background_tasks.add_task(
                 send_whatsapp_message,
@@ -310,7 +320,7 @@ async def whatsapp_webhook(
     # רשימת רשומות חודש נוכחי
     # ===============================
     if command == "list":
-        transactions = get_current_month_transactions(db)
+        transactions = get_current_month_transactions(db, family.id)
         formatted = format_transactions_for_whatsapp_short(transactions)
 
         background_tasks.add_task(
@@ -374,6 +384,9 @@ async def whatsapp_webhook(
             amount=parsed["amount"],
             type=parsed["type"],
             category=parsed["category"],
+            family_id=family.id,
+            user_id=user.id,
+            user_phone=user.phone,
         )
 
         db.add(transaction)
