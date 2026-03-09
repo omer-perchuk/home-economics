@@ -121,7 +121,7 @@ def debug_families(db: Session = Depends(get_db)):
 
     return result
 
-@app.post("/debug/fix-transaction-families")
+@app.get("/debug/fix-transaction-families")
 def fix_transaction_families(db: Session = Depends(get_db)):
     from app.db.models import Transaction, User
 
@@ -143,4 +143,4 @@ def fix_transaction_families(db: Session = Depends(get_db)):
 
     db.commit()
 
-    return {"updated_transactions": updated}
+    return {"updated_transactions": updated}d_transactions": updated}
