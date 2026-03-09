@@ -28,8 +28,9 @@ from app.services.whatsapp_format_service import (
     format_short_amount,
 )
 
-
 router = APIRouter()
+
+DASHBOARD_URL = "https://home-economics-flax.vercel.app"
 
 
 def build_twiml_message(message: str) -> Response:
@@ -80,7 +81,8 @@ async def whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
 
                 if t:
                     amount = format_short_amount(t.amount)
-                    deleted.append(f"{t.description} — {amount} ₪")
+                    description = t.description if t.description else "ללא תיאור"
+                    deleted.append(f"{description} — {amount} ₪")
 
         clear_user_state(sender)
 
@@ -104,8 +106,13 @@ async def whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
 
         clear_user_state(sender)
 
+        formatted_summary = format_summary_for_whatsapp_short(summary)
+
         return build_twiml_message(
-            format_summary_for_whatsapp_short(summary)
+            f"""{formatted_summary}
+
+📊 לאתר:
+{DASHBOARD_URL}"""
         )
 
     # ===============================
@@ -229,7 +236,13 @@ async def whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
     if command == "list":
         transactions = get_current_month_transactions(db)
         formatted = format_transactions_for_whatsapp_short(transactions)
-        return build_twiml_message(formatted)
+
+        return build_twiml_message(
+            f"""{formatted}
+
+📊 לאתר:
+{DASHBOARD_URL}"""
+        )
 
     # ===============================
     # פקודת סיכום
@@ -242,6 +255,15 @@ async def whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
 
         return build_twiml_message(
             "📅 איזה חודש?\nלמשל: 3/2026 או מרץ 2026"
+        )
+
+    # ===============================
+    # פקודת אתר
+    # ===============================
+    if command == "site":
+        return build_twiml_message(
+            f"""📊 קישור לאתר:
+{DASHBOARD_URL}"""
         )
 
     # ===============================
