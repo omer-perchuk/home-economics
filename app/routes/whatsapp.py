@@ -1,7 +1,9 @@
-from fastapi import APIRouter, Request, Depends
+import os
+
+from fastapi import APIRouter, Request, Depends, BackgroundTasks
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
-from twilio.twiml.messaging_response import MessagingResponse
+from twilio.rest import Client
 
 from app.db.database import get_db
 from app.db.models import Transaction
@@ -32,20 +34,38 @@ router = APIRouter()
 
 DASHBOARD_URL = "https://home-economics-flax.vercel.app"
 
+TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "")
+TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "")
+TWILIO_WHATSAPP_NUMBER = os.getenv("TWILIO_WHATSAPP_NUMBER", "whatsapp:+14155238886")
 
-def build_twiml_message(message: str) -> Response:
-    response = MessagingResponse()
-    response.message(body=message)
-    xml_content = str(response)
-    print("Twilio response XML:", xml_content)
-    return Response(
-        content=xml_content,
-        media_type="text/xml; charset=utf-8"
-    )
+
+def send_whatsapp_message(to_number: str, message: str) -> None:
+    if not TWILIO_ACCOUNT_SID or not TWILIO_AUTH_TOKEN:
+        print("Twilio credentials are missing. Message was not sent.")
+        return
+
+    try:
+        client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+        client.messages.create(
+            from_=TWILIO_WHATSAPP_NUMBER,
+            to=to_number,
+            body=message,
+        )
+        print(f"Sent WhatsApp reply to {to_number}: {message}")
+    except Exception as e:
+        print(f"Failed to send WhatsApp reply to {to_number}: {e}")
+
+
+def build_empty_ok_response() -> Response:
+    return Response(status_code=200, content="")
 
 
 @router.post("/webhook/whatsapp")
-async def whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
+async def whatsapp_webhook(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
     form = await request.form()
 
     message = form.get("Body", "").strip().lower()
@@ -70,7 +90,12 @@ async def whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
                 selected_indexes.append(int(p) - 1)
 
         if not selected_indexes:
-            return build_twiml_message("🗑️ שלח מספר רשומה או כמה מספרים למחיקה.")
+            background_tasks.add_task(
+                send_whatsapp_message,
+                sender,
+                "🗑️ שלח מספר רשומה או כמה מספרים למחיקה."
+            )
+            return build_empty_ok_response()
 
         deleted = []
 
@@ -86,9 +111,12 @@ async def whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
 
         clear_user_state(sender)
 
-        return build_twiml_message(
+        background_tasks.add_task(
+            send_whatsapp_message,
+            sender,
             format_deleted_transactions_message(deleted)
         )
+        return build_empty_ok_response()
 
     # ===============================
     # סיכום - מחכים לחודש
@@ -97,9 +125,12 @@ async def whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
         parsed_month = parse_month_input(message)
 
         if not parsed_month:
-            return build_twiml_message(
+            background_tasks.add_task(
+                send_whatsapp_message,
+                sender,
                 "📅 לא הבנתי את החודש. שלח למשל: 3/2026 או מרץ 2026"
             )
+            return build_empty_ok_response()
 
         month, year = parsed_month
         summary = get_month_summary(db, month, year)
@@ -108,25 +139,38 @@ async def whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
 
         formatted_summary = format_summary_for_whatsapp_short(summary)
 
-        return build_twiml_message(
+        background_tasks.add_task(
+            send_whatsapp_message,
+            sender,
             f"""{formatted_summary}
 
 📊 לאתר:
 {DASHBOARD_URL}"""
         )
+        return build_empty_ok_response()
 
     # ===============================
     # עדכון - בחירת רשומה
     # ===============================
     if user_state and user_state.get("action") == "update_select":
         if not message.isdigit():
-            return build_twiml_message("✏️ שלח מספר רשומה לעדכון.")
+            background_tasks.add_task(
+                send_whatsapp_message,
+                sender,
+                "✏️ שלח מספר רשומה לעדכון."
+            )
+            return build_empty_ok_response()
 
         selected_index = int(message) - 1
         transaction_ids = user_state.get("transaction_ids", [])
 
         if selected_index < 0 or selected_index >= len(transaction_ids):
-            return build_twiml_message("המספר לא תקין.")
+            background_tasks.add_task(
+                send_whatsapp_message,
+                sender,
+                "המספר לא תקין."
+            )
+            return build_empty_ok_response()
 
         transaction_id = transaction_ids[selected_index]
 
@@ -138,9 +182,12 @@ async def whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
             }
         )
 
-        return build_twiml_message(
+        background_tasks.add_task(
+            send_whatsapp_message,
+            sender,
             "✏️ שלח ערך חדש.\nלדוגמה: ארומה 42"
         )
+        return build_empty_ok_response()
 
     # ===============================
     # עדכון - קבלת ערך חדש
@@ -156,14 +203,22 @@ async def whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
 
         if not transaction:
             clear_user_state(sender)
-            return build_twiml_message("לא נמצאה רשומה לעדכון.")
+            background_tasks.add_task(
+                send_whatsapp_message,
+                sender,
+                "לא נמצאה רשומה לעדכון."
+            )
+            return build_empty_ok_response()
 
         parsed = parse_expense_text(message)
 
         if parsed["amount"] is None:
-            return build_twiml_message(
+            background_tasks.add_task(
+                send_whatsapp_message,
+                sender,
                 "לא הצלחתי להבין. שלח למשל: שופרסל 280"
             )
+            return build_empty_ok_response()
 
         transaction.original_text = parsed["original_text"]
         transaction.description = parsed["description"]
@@ -175,9 +230,12 @@ async def whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
 
         clear_user_state(sender)
 
-        return build_twiml_message(
+        background_tasks.add_task(
+            send_whatsapp_message,
+            sender,
             format_updated_transaction_message(transaction)
         )
+        return build_empty_ok_response()
 
     # ===============================
     # פקודת מחיקה
@@ -186,7 +244,12 @@ async def whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
         transactions = get_current_month_transactions(db)
 
         if not transactions:
-            return build_twiml_message("📭 אין רשומות בחודש הנוכחי.")
+            background_tasks.add_task(
+                send_whatsapp_message,
+                sender,
+                "📭 אין רשומות בחודש הנוכחי."
+            )
+            return build_empty_ok_response()
 
         transaction_ids = [t.id for t in transactions]
 
@@ -203,7 +266,12 @@ async def whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
             include_delete_hint=True
         )
 
-        return build_twiml_message(formatted)
+        background_tasks.add_task(
+            send_whatsapp_message,
+            sender,
+            formatted
+        )
+        return build_empty_ok_response()
 
     # ===============================
     # פקודת עדכון
@@ -212,7 +280,12 @@ async def whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
         transactions = get_current_month_transactions(db)
 
         if not transactions:
-            return build_twiml_message("📭 אין רשומות לעדכון.")
+            background_tasks.add_task(
+                send_whatsapp_message,
+                sender,
+                "📭 אין רשומות לעדכון."
+            )
+            return build_empty_ok_response()
 
         transaction_ids = [t.id for t in transactions]
 
@@ -226,9 +299,12 @@ async def whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
 
         formatted = format_transactions_for_whatsapp_short(transactions)
 
-        return build_twiml_message(
+        background_tasks.add_task(
+            send_whatsapp_message,
+            sender,
             f"{formatted}\n\n✏️ שלח את מספר הרשומה לעדכון"
         )
+        return build_empty_ok_response()
 
     # ===============================
     # רשימת רשומות חודש נוכחי
@@ -237,12 +313,15 @@ async def whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
         transactions = get_current_month_transactions(db)
         formatted = format_transactions_for_whatsapp_short(transactions)
 
-        return build_twiml_message(
+        background_tasks.add_task(
+            send_whatsapp_message,
+            sender,
             f"""{formatted}
 
 📊 לאתר:
 {DASHBOARD_URL}"""
         )
+        return build_empty_ok_response()
 
     # ===============================
     # פקודת סיכום
@@ -253,26 +332,35 @@ async def whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
             {"action": "awaiting_summary_month"}
         )
 
-        return build_twiml_message(
+        background_tasks.add_task(
+            send_whatsapp_message,
+            sender,
             "📅 איזה חודש?\nלמשל: 3/2026 או מרץ 2026"
         )
+        return build_empty_ok_response()
 
     # ===============================
     # פקודת אתר
     # ===============================
     if command == "site":
-        return build_twiml_message(
+        background_tasks.add_task(
+            send_whatsapp_message,
+            sender,
             f"""📊 קישור לאתר:
 {DASHBOARD_URL}"""
         )
+        return build_empty_ok_response()
 
     # ===============================
     # פקודת עזרה
     # ===============================
     if command == "help":
-        return build_twiml_message(
+        background_tasks.add_task(
+            send_whatsapp_message,
+            sender,
             format_help_message()
         )
+        return build_empty_ok_response()
 
     # ===============================
     # הוספת הוצאה / הכנסה
@@ -291,13 +379,19 @@ async def whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
         db.add(transaction)
         db.commit()
 
-        return build_twiml_message(
+        background_tasks.add_task(
+            send_whatsapp_message,
+            sender,
             format_added_transaction_message(parsed)
         )
+        return build_empty_ok_response()
 
     # ===============================
     # אם לא הבין
     # ===============================
-    return build_twiml_message(
+    background_tasks.add_task(
+        send_whatsapp_message,
+        sender,
         "🤔 לא הבנתי. שלח 'עזרה' לפקודות."
     )
+    return build_empty_ok_response()
