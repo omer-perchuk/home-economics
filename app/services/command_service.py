@@ -1,78 +1,76 @@
-def detect_command(message: str) -> str | None:
-    normalized = message.strip().lower()
+COMMAND_KEYWORDS = {
 
-    list_commands = {
-        "רשימה",
-        "הצג",
-        "תראה",
-        "הוצאות",
-        "רשומות",
-        "תציג",
-        "להציג",
-        "הצגה",
-        "show",
-        "list",
-    }
-
-    summary_commands = {
+    "summary": [
         "סיכום",
         "סכם",
-        "סיכום חודשי",
-        "דוח",
-        "דוח",
-        "summary",
-        "report",
-    }
+        "מה הסיכום",
+        "כמה הוצאתי",
+        "כמה הוצאות",
+        "כמה הוצאנו",
+        "מה מצב החשבון",
+        "מצב",
+        "סטטוס"
+    ],
 
-    delete_commands = {
+    "list": [
+        "הצג",
+        "תראה",
+        "רשימה",
+        "רשימת הוצאות",
+        "תראה הוצאות",
+        "הוצאות",
+        "מה הוצאתי",
+        "מה הוצאנו"
+    ],
+
+    "delete": [
         "מחק",
-        "מחיקה",
         "למחוק",
-        "delete",
-        "remove",
-    }
+        "מחיקה",
+        "תמחק",
+        "תמחוק",
+        "הסר",
+        "להסיר"
+    ],
 
-    update_commands = {
+    "update": [
         "עדכן",
-        "עדכון",
         "לעדכן",
-        "ערוך",
-        "עריכה",
-        "edit",
-        "update",
-    }
+        "עדכון",
+        "שנה",
+        "לשנות",
+        "שינוי",
+        "לתקן",
+        "תקן"
+    ],
 
-    help_commands = {
-        "עזרה",
-        "help",
-        "?",
-    }
-
-    site_commands = {
+    "site": [
         "אתר",
-        "לאתר",
+        "פתח אתר",
+        "שלח אתר",
         "דשבורד",
         "dashboard",
-        "site",
-        "web",
-    }
+        "קישור"
+    ],
 
-    if normalized in list_commands:
-        return "list"
+    "help": [
+        "עזרה",
+        "פקודות",
+        "מה אפשר",
+        "איך משתמשים",
+        "איך להשתמש",
+        "help"
+    ]
+}
 
-    if normalized in summary_commands:
-        return "summary"
 
-    if normalized in delete_commands:
-        return "delete"
+def detect_command(text: str):
 
-    if normalized in update_commands:
-        return "update"
+    text = text.lower()
 
-    if normalized in help_commands:
-        return "help"
-
-    if normalized in site_commands:
-        return "site"
+    for command, keywords in COMMAND_KEYWORDS.items():
+        for keyword in keywords:
+            if keyword in text:
+                return command
 
     return None
