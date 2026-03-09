@@ -7,10 +7,6 @@ FAMILIES = [
             {
                 "name": "עומר",
                 "phone": "whatsapp:+972536278656"
-            },
-            {
-                "name": "יוליה",
-                "phone": "whatsapp:+972546216377"
             }
         ]
     },
@@ -25,8 +21,8 @@ FAMILIES = [
 
         "members": [
             {
-                "name": "Your Name",  # שנה לשם שלך
-                "phone": "whatsapp:+972500000000"  # שנה למספר הוואטסאפ שלך בפורמט: whatsapp:+972XXXXXXXXX
+                "name": "יוליה",
+                "phone": "whatsapp:+972546216377"
             },
             {
                 "name": "Partner Name",  # אופציונלי: בן/בת זוג
