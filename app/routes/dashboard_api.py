@@ -2,7 +2,6 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
-from app.db.models import Family
 from app.services.report_service import (
     get_available_months,
     get_month_summary,
@@ -12,23 +11,11 @@ from app.services.report_service import (
 router = APIRouter(prefix="/api", tags=["dashboard"])
 
 
-def get_family_id_by_slug(db: Session, family_slug: str | None):
-    if not family_slug:
-        return None
-
-    family = db.query(Family).filter(Family.slug == family_slug).first()
-    if not family:
-        return None
-
-    return family.id
-
-
 @router.get("/months")
 def api_months(
-    family_slug: str | None = Query(default=None),
+    family_id: int | None = Query(default=None),
     db: Session = Depends(get_db),
 ):
-    family_id = get_family_id_by_slug(db, family_slug)
     return get_available_months(db, family_id=family_id)
 
 
@@ -36,10 +23,9 @@ def api_months(
 def api_summary(
     month: int,
     year: int,
-    family_slug: str | None = Query(default=None),
+    family_id: int | None = Query(default=None),
     db: Session = Depends(get_db),
 ):
-    family_id = get_family_id_by_slug(db, family_slug)
     return get_month_summary(db, month, year, family_id=family_id)
 
 
@@ -47,10 +33,9 @@ def api_summary(
 def api_transactions(
     month: int,
     year: int,
-    family_slug: str | None = Query(default=None),
+    family_id: int | None = Query(default=None),
     db: Session = Depends(get_db),
 ):
-    family_id = get_family_id_by_slug(db, family_slug)
     transactions = get_transactions_by_month(db, month, year, family_id=family_id)
 
     return [
