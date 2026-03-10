@@ -13,10 +13,8 @@ class Family(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False, unique=True)
-
-    # מספר הוואטסאפ של הבוט שמשויך למשפחה
+    slug = Column(String, nullable=False, unique=True, index=True)
     twilio_whatsapp_number = Column(String, nullable=True)
-
     created_at = Column(DateTime, default=datetime.utcnow)
 
     users = relationship("User", back_populates="family", cascade="all, delete-orphan")

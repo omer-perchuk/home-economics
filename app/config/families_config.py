@@ -1,8 +1,8 @@
 FAMILIES = [
     {
         "family_name": "משפחת עומר",
+        "family_slug": "omer-family",
         "twilio_number": "whatsapp:+14155238886",
-
         "members": [
             {
                 "name": "עומר",
@@ -10,22 +10,17 @@ FAMILIES = [
             }
         ]
     },
-
-    # ===== משפחה לדוגמה =====
-    # אפשר לערוך ישירות את הבלוק הזה כדי להוסיף משפחה חדשה למערכת
-
     {
-        "family_name": "Example Family",  # שנה לשם המשפחה שלך
-
+        "family_name": "Example Family",
+        "family_slug": "example-family",
         "twilio_number": "whatsapp:+14155238886",
-
         "members": [
             {
                 "name": "יוליה",
                 "phone": "whatsapp:+972546216377"
             },
             {
-                "name": "Partner Name",  # אופציונלי: בן/בת זוג
+                "name": "Partner Name",
                 "phone": "whatsapp:+972500000001"
             }
         ]

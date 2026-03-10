@@ -12,11 +12,11 @@ from app.services.report_service import (
 router = APIRouter(prefix="/api", tags=["dashboard"])
 
 
-def get_family_id_by_name(db: Session, family_name: str | None):
-    if not family_name:
+def get_family_id_by_slug(db: Session, family_slug: str | None):
+    if not family_slug:
         return None
 
-    family = db.query(Family).filter(Family.name == family_name).first()
+    family = db.query(Family).filter(Family.slug == family_slug).first()
     if not family:
         return None
 
@@ -25,34 +25,32 @@ def get_family_id_by_name(db: Session, family_name: str | None):
 
 @router.get("/months")
 def api_months(
-    family_name: str | None = Query(default=None),
+    family_slug: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ):
-    family_id = get_family_id_by_name(db, family_name)
-    data = get_available_months(db, family_id=family_id)
-    return data
+    family_id = get_family_id_by_slug(db, family_slug)
+    return get_available_months(db, family_id=family_id)
 
 
 @router.get("/summary")
 def api_summary(
     month: int,
     year: int,
-    family_name: str | None = Query(default=None),
+    family_slug: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ):
-    family_id = get_family_id_by_name(db, family_name)
-    data = get_month_summary(db, month, year, family_id=family_id)
-    return data
+    family_id = get_family_id_by_slug(db, family_slug)
+    return get_month_summary(db, month, year, family_id=family_id)
 
 
 @router.get("/transactions")
 def api_transactions(
     month: int,
     year: int,
-    family_name: str | None = Query(default=None),
+    family_slug: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ):
-    family_id = get_family_id_by_name(db, family_name)
+    family_id = get_family_id_by_slug(db, family_slug)
     transactions = get_transactions_by_month(db, month, year, family_id=family_id)
 
     return [

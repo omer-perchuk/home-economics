@@ -73,8 +73,8 @@ function formatCurrency(value: number) {
 
 export default function ReportsPage() {
   const searchParams = useSearchParams();
-  const FAMILY_NAME = searchParams.get("family") || "משפחת עומר";
-  const familyQuery = `family=${encodeURIComponent(FAMILY_NAME)}`;
+  const FAMILY_SLUG = searchParams.get("family") || "omer-family";
+  const familyQuery = `family=${encodeURIComponent(FAMILY_SLUG)}`;
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [months, setMonths] = useState<MonthOption[]>([]);
@@ -89,19 +89,19 @@ export default function ReportsPage() {
 
   useEffect(() => {
     loadMonths();
-  }, [FAMILY_NAME]);
+  }, [FAMILY_SLUG]);
 
   useEffect(() => {
     if (selectedYear) {
       loadYearData(selectedYear);
     }
-  }, [selectedYear, months, FAMILY_NAME]);
+  }, [selectedYear, months, FAMILY_SLUG]);
 
   async function loadMonths() {
     try {
       setError("");
       const res = await fetch(
-        `${backendUrl}/api/months?family_name=${encodeURIComponent(FAMILY_NAME)}`
+        `${backendUrl}/api/months?family_slug=${encodeURIComponent(FAMILY_SLUG)}`
       );
       const data: MonthOption[] = await res.json();
 
@@ -141,7 +141,7 @@ export default function ReportsPage() {
       const summaries: Summary[] = await Promise.all(
         yearMonths.map(async (m) => {
           const res = await fetch(
-            `${backendUrl}/api/summary?month=${m.month}&year=${m.year}&family_name=${encodeURIComponent(FAMILY_NAME)}`
+            `${backendUrl}/api/summary?month=${m.month}&year=${m.year}&family_slug=${encodeURIComponent(FAMILY_SLUG)}`
           );
           return res.json();
         })

@@ -15,12 +15,14 @@ def load_families():
             if not family:
                 family = Family(
                     name=family_data["family_name"],
+                    slug=family_data["family_slug"],
                     twilio_whatsapp_number=family_data["twilio_number"],
                 )
                 db.add(family)
                 db.commit()
                 db.refresh(family)
             else:
+                family.slug = family_data["family_slug"]
                 family.twilio_whatsapp_number = family_data["twilio_number"]
                 db.commit()
                 db.refresh(family)

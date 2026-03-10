@@ -93,8 +93,8 @@ function formatCurrency(value: number) {
 
 export default function HomePage() {
   const searchParams = useSearchParams();
-  const FAMILY_NAME = searchParams.get("family") || "משפחת עומר";
-  const familyQuery = `family=${encodeURIComponent(FAMILY_NAME)}`;
+  const FAMILY_SLUG = searchParams.get("family") || "omer-family";
+  const familyQuery = `family=${encodeURIComponent(FAMILY_SLUG)}`;
 
   const [mounted, setMounted] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -148,7 +148,7 @@ export default function HomePage() {
     try {
       setError("");
       const res = await fetch(
-        `${backendUrl}/api/months?family_name=${encodeURIComponent(FAMILY_NAME)}`
+        `${backendUrl}/api/months?family_slug=${encodeURIComponent(FAMILY_SLUG)}`
       );
       const data = await res.json();
       setMonths(data);
@@ -174,10 +174,10 @@ export default function HomePage() {
 
       const [summaryRes, txRes] = await Promise.all([
         fetch(
-          `${backendUrl}/api/summary?month=${month}&year=${year}&family_name=${encodeURIComponent(FAMILY_NAME)}`
+          `${backendUrl}/api/summary?month=${month}&year=${year}&family_slug=${encodeURIComponent(FAMILY_SLUG)}`
         ),
         fetch(
-          `${backendUrl}/api/transactions?month=${month}&year=${year}&family_name=${encodeURIComponent(FAMILY_NAME)}`
+          `${backendUrl}/api/transactions?month=${month}&year=${year}&family_slug=${encodeURIComponent(FAMILY_SLUG)}`
         ),
       ]);
 
@@ -279,7 +279,6 @@ export default function HomePage() {
 
   function handlePieClick(data: PieClickData) {
     const category = data.category ?? data.payload?.category ?? data.name;
-
     const amount = data.amount ?? data.payload?.amount ?? data.value;
 
     if (!category || amount === undefined) {
@@ -306,13 +305,13 @@ export default function HomePage() {
       loadSettings();
       loadMonths();
     }
-  }, [mounted, FAMILY_NAME]);
+  }, [mounted, FAMILY_SLUG]);
 
   useEffect(() => {
     if (selectedMonth) {
       loadData(selectedMonth.month, selectedMonth.year);
     }
-  }, [selectedMonth, FAMILY_NAME]);
+  }, [selectedMonth, FAMILY_SLUG]);
 
   const chartData = useMemo(() => {
     return summary?.categories ?? [];
