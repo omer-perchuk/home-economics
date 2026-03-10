@@ -5,7 +5,6 @@ from sqlalchemy.orm import Session
 
 from app.services.parser_service import parse_expense_text
 from app.services.report_service import get_category_summary
-from app.services.family_loader import load_families
 
 from app.db.database import Base, engine, get_db
 from app.db.models import Transaction
@@ -20,11 +19,6 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
-
-# טעינת המשפחות מהקובץ בעת עליית השרת
-@app.on_event("startup")
-def startup_event():
-    load_families()
 
 
 # CORS (מאפשר לפרונטאנד לגשת ל-API)

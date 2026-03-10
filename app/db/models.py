@@ -13,7 +13,6 @@ class Family(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False, unique=True)
-    slug = Column(String, nullable=False, unique=True, index=True)
     twilio_whatsapp_number = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
