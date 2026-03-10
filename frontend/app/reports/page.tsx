@@ -1,10 +1,7 @@
 "use client";
 
-export const dynamic = "force-dynamic";
-
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
 import {
   ResponsiveContainer,
   BarChart,
@@ -74,9 +71,7 @@ function formatCurrency(value: number) {
 }
 
 export default function ReportsPage() {
-  const searchParams = useSearchParams();
-  const familyId = searchParams.get("family_id") || "1";
-  const familyQuery = `family_id=${encodeURIComponent(familyId)}`;
+  const FAMILY_ID = 1;
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [months, setMonths] = useState<MonthOption[]>([]);
@@ -91,13 +86,13 @@ export default function ReportsPage() {
 
   useEffect(() => {
     loadMonths();
-  }, [familyId]);
+  }, []);
 
   useEffect(() => {
     if (selectedYear) {
       loadYearData(selectedYear);
     }
-  }, [selectedYear, months, familyId]);
+  }, [selectedYear, months]);
 
   async function loadMonths() {
     try {
@@ -105,7 +100,7 @@ export default function ReportsPage() {
       setLoading(true);
 
       const res = await fetch(
-        `${backendUrl}/api/months?family_id=${familyId}`
+        `${backendUrl}/api/months?family_id=${FAMILY_ID}`
       );
       const data: MonthOption[] = await res.json();
 
@@ -145,7 +140,7 @@ export default function ReportsPage() {
       const summaries: Summary[] = await Promise.all(
         yearMonths.map(async (m) => {
           const res = await fetch(
-            `${backendUrl}/api/summary?month=${m.month}&year=${m.year}&family_id=${familyId}`
+            `${backendUrl}/api/summary?month=${m.month}&year=${m.year}&family_id=${FAMILY_ID}`
           );
           return res.json();
         })
@@ -200,7 +195,7 @@ export default function ReportsPage() {
             <div className="text-xl font-bold text-green-600">תפריט</div>
 
             <Link
-              href={`/?${familyQuery}`}
+              href="/"
               onClick={() => setMenuOpen(false)}
               className="flex items-center gap-2 text-lg"
             >
@@ -209,7 +204,7 @@ export default function ReportsPage() {
             </Link>
 
             <Link
-              href={`/reports?${familyQuery}`}
+              href="/reports"
               onClick={() => setMenuOpen(false)}
               className="flex items-center gap-2 text-lg"
             >
