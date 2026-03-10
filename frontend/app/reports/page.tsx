@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -73,8 +75,8 @@ function formatCurrency(value: number) {
 
 export default function ReportsPage() {
   const searchParams = useSearchParams();
-  const familySlug = searchParams.get("family") || "omer-family";
-  const familyQuery = `family=${encodeURIComponent(familySlug)}`;
+  const familyId = searchParams.get("family_id") || "1";
+  const familyQuery = `family_id=${encodeURIComponent(familyId)}`;
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [months, setMonths] = useState<MonthOption[]>([]);
@@ -89,13 +91,13 @@ export default function ReportsPage() {
 
   useEffect(() => {
     loadMonths();
-  }, [familySlug]);
+  }, [familyId]);
 
   useEffect(() => {
     if (selectedYear) {
       loadYearData(selectedYear);
     }
-  }, [selectedYear, months, familySlug]);
+  }, [selectedYear, months, familyId]);
 
   async function loadMonths() {
     try {
@@ -103,7 +105,7 @@ export default function ReportsPage() {
       setLoading(true);
 
       const res = await fetch(
-        `${backendUrl}/api/months?family_slug=${encodeURIComponent(familySlug)}`
+        `${backendUrl}/api/months?family_id=${familyId}`
       );
       const data: MonthOption[] = await res.json();
 
@@ -143,7 +145,7 @@ export default function ReportsPage() {
       const summaries: Summary[] = await Promise.all(
         yearMonths.map(async (m) => {
           const res = await fetch(
-            `${backendUrl}/api/summary?month=${m.month}&year=${m.year}&family_slug=${encodeURIComponent(familySlug)}`
+            `${backendUrl}/api/summary?month=${m.month}&year=${m.year}&family_id=${familyId}`
           );
           return res.json();
         })
