@@ -1,5 +1,6 @@
 "use client";
 
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -63,14 +64,8 @@ const categoryColors: Record<string, string> = {
   "אחר": "#94a3b8",
 };
 
-const FAMILY_NAME = useMemo(() => {
-  if (typeof window === "undefined") {
-    return "משפחת עומר";
-  }
-
-  const params = new URLSearchParams(window.location.search);
-  return params.get("family") || "משפחת עומר";
-}, []);
+const searchParams = useSearchParams();
+const FAMILY_NAME = searchParams.get("family") || "משפחת עומר";
 
 function formatCurrency(value: number) {
   return `₪${value.toLocaleString("he-IL", {
@@ -91,9 +86,9 @@ export default function ReportsPage() {
   const backendUrl =
     process.env.NEXT_PUBLIC_API_URL || "https://home-economics.onrender.com";
 
-  useEffect(() => {
-    loadMonths();
-  }, []);
+useEffect(() => {
+  loadMonths();
+}, [FAMILY_NAME]);
 
   useEffect(() => {
     if (selectedYear) {
