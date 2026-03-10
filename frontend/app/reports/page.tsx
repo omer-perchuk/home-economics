@@ -63,6 +63,15 @@ const categoryColors: Record<string, string> = {
   "אחר": "#94a3b8",
 };
 
+const FAMILY_NAME = useMemo(() => {
+  if (typeof window === "undefined") {
+    return "משפחת עומר";
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  return params.get("family") || "משפחת עומר";
+}, []);
+
 function formatCurrency(value: number) {
   return `₪${value.toLocaleString("he-IL", {
     minimumFractionDigits: 0,
@@ -79,7 +88,8 @@ export default function ReportsPage() {
   const [chartData, setChartData] = useState<ChartRow[]>([]);
   const [allCategories, setAllCategories] = useState<string[]>([]);
 
-  const backendUrl = process.env.NEXT_PUBLIC_API_URL || "https://home-economics.onrender.com";
+  const backendUrl =
+    process.env.NEXT_PUBLIC_API_URL || "https://home-economics.onrender.com";
 
   useEffect(() => {
     loadMonths();
@@ -89,12 +99,15 @@ export default function ReportsPage() {
     if (selectedYear) {
       loadYearData(selectedYear);
     }
-  }, [selectedYear]);
+  }, [selectedYear, months]);
 
   async function loadMonths() {
     try {
       setError("");
-      const res = await fetch(`${backendUrl}/api/months`);
+
+      const res = await fetch(
+        `${backendUrl}/api/months?family_name=${encodeURIComponent(FAMILY_NAME)}`
+      );
       const data: MonthOption[] = await res.json();
 
       setMonths(data);
@@ -129,7 +142,9 @@ export default function ReportsPage() {
 
       const summaries: Summary[] = await Promise.all(
         yearMonths.map(async (m) => {
-          const res = await fetch(`${backendUrl}/api/summary?month=${m.month}&year=${m.year}`);
+          const res = await fetch(
+            `${backendUrl}/api/summary?month=${m.month}&year=${m.year}&family_name=${encodeURIComponent(FAMILY_NAME)}`
+          );
           return res.json();
         })
       );
@@ -261,9 +276,7 @@ export default function ReportsPage() {
                   <CartesianGrid strokeDasharray="4 4" />
                   <XAxis dataKey="monthLabel" />
                   <YAxis />
-                  <Tooltip
-                    formatter={(value) => formatCurrency(Number(value))}
-                  />
+                  <Tooltip formatter={(value) => formatCurrency(Number(value))} />
                   {allCategories.map((category) => (
                     <Bar
                       key={category}
