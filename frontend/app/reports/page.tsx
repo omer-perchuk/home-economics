@@ -73,8 +73,8 @@ function formatCurrency(value: number) {
 
 export default function ReportsPage() {
   const searchParams = useSearchParams();
-  const FAMILY_SLUG = searchParams.get("family") || "omer-family";
-  const familyQuery = `family=${encodeURIComponent(FAMILY_SLUG)}`;
+
+  const [familySlug, setFamilySlug] = useState<string>("");
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [months, setMonths] = useState<MonthOption[]>([]);
@@ -87,21 +87,32 @@ export default function ReportsPage() {
   const backendUrl =
     process.env.NEXT_PUBLIC_API_URL || "https://home-economics.onrender.com";
 
-  useEffect(() => {
-    loadMonths();
-  }, [FAMILY_SLUG]);
+  const familyQuery = `family=${encodeURIComponent(familySlug || "omer-family")}`;
 
   useEffect(() => {
-    if (selectedYear) {
-      loadYearData(selectedYear);
+    const slug = searchParams.get("family") || "omer-family";
+    setFamilySlug(slug);
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (familySlug) {
+      loadMonths(familySlug);
     }
-  }, [selectedYear, months, FAMILY_SLUG]);
+  }, [familySlug]);
 
-  async function loadMonths() {
+  useEffect(() => {
+    if (selectedYear && familySlug) {
+      loadYearData(selectedYear, familySlug);
+    }
+  }, [selectedYear, months, familySlug]);
+
+  async function loadMonths(currentFamilySlug: string) {
     try {
       setError("");
+      setLoading(true);
+
       const res = await fetch(
-        `${backendUrl}/api/months?family_slug=${encodeURIComponent(FAMILY_SLUG)}`
+        `${backendUrl}/api/months?family_slug=${encodeURIComponent(currentFamilySlug)}`
       );
       const data: MonthOption[] = await res.json();
 
@@ -122,7 +133,7 @@ export default function ReportsPage() {
     }
   }
 
-  async function loadYearData(year: number) {
+  async function loadYearData(year: number, currentFamilySlug: string) {
     try {
       setLoading(true);
       setError("");
@@ -141,7 +152,7 @@ export default function ReportsPage() {
       const summaries: Summary[] = await Promise.all(
         yearMonths.map(async (m) => {
           const res = await fetch(
-            `${backendUrl}/api/summary?month=${m.month}&year=${m.year}&family_slug=${encodeURIComponent(FAMILY_SLUG)}`
+            `${backendUrl}/api/summary?month=${m.month}&year=${m.year}&family_slug=${encodeURIComponent(currentFamilySlug)}`
           );
           return res.json();
         })
@@ -228,6 +239,10 @@ export default function ReportsPage() {
           </h1>
 
           <div className="w-10" />
+        </div>
+
+        <div className="rounded-xl bg-blue-50 px-3 py-2 text-sm text-blue-800 shadow-sm">
+          משפחה פעילה: <strong>{familySlug || "לא נטען"}</strong>
         </div>
 
         {error && (

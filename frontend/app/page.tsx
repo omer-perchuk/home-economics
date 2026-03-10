@@ -93,12 +93,11 @@ function formatCurrency(value: number) {
 
 export default function HomePage() {
   const searchParams = useSearchParams();
-  const FAMILY_SLUG = searchParams.get("family") || "omer-family";
-  const familyQuery = `family=${encodeURIComponent(FAMILY_SLUG)}`;
 
   const [mounted, setMounted] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [familySlug, setFamilySlug] = useState<string>("");
 
+  const [menuOpen, setMenuOpen] = useState(false);
   const [months, setMonths] = useState<MonthOption[]>([]);
   const [selectedMonth, setSelectedMonth] = useState<MonthOption | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -124,10 +123,16 @@ export default function HomePage() {
   });
 
   const backendUrl = "https://home-economics.onrender.com";
+  const familyQuery = `family=${encodeURIComponent(familySlug || "omer-family")}`;
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    const slug = searchParams.get("family") || "omer-family";
+    setFamilySlug(slug);
+  }, [searchParams]);
 
   useEffect(() => {
     return () => {
@@ -144,13 +149,16 @@ export default function HomePage() {
     setTitleDraft(data.dashboard_title);
   }
 
-  async function loadMonths() {
+  async function loadMonths(currentFamilySlug: string) {
     try {
       setError("");
+      setLoading(true);
+
       const res = await fetch(
-        `${backendUrl}/api/months?family_slug=${encodeURIComponent(FAMILY_SLUG)}`
+        `${backendUrl}/api/months?family_slug=${encodeURIComponent(currentFamilySlug)}`
       );
-      const data = await res.json();
+      const data: MonthOption[] = await res.json();
+
       setMonths(data);
 
       if (data.length > 0) {
@@ -167,17 +175,17 @@ export default function HomePage() {
     }
   }
 
-  async function loadData(month: number, year: number) {
+  async function loadData(month: number, year: number, currentFamilySlug: string) {
     try {
       setLoading(true);
       setError("");
 
       const [summaryRes, txRes] = await Promise.all([
         fetch(
-          `${backendUrl}/api/summary?month=${month}&year=${year}&family_slug=${encodeURIComponent(FAMILY_SLUG)}`
+          `${backendUrl}/api/summary?month=${month}&year=${year}&family_slug=${encodeURIComponent(currentFamilySlug)}`
         ),
         fetch(
-          `${backendUrl}/api/transactions?month=${month}&year=${year}&family_slug=${encodeURIComponent(FAMILY_SLUG)}`
+          `${backendUrl}/api/transactions?month=${month}&year=${year}&family_slug=${encodeURIComponent(currentFamilySlug)}`
         ),
       ]);
 
@@ -201,8 +209,8 @@ export default function HomePage() {
         method: "DELETE",
       });
 
-      if (selectedMonth) {
-        loadData(selectedMonth.month, selectedMonth.year);
+      if (selectedMonth && familySlug) {
+        loadData(selectedMonth.month, selectedMonth.year, familySlug);
       }
     } catch (err) {
       setError(String(err));
@@ -227,8 +235,8 @@ export default function HomePage() {
 
       setEditingId(null);
 
-      if (selectedMonth) {
-        loadData(selectedMonth.month, selectedMonth.year);
+      if (selectedMonth && familySlug) {
+        loadData(selectedMonth.month, selectedMonth.year, familySlug);
       }
     } catch (err) {
       setError(String(err));
@@ -303,15 +311,20 @@ export default function HomePage() {
   useEffect(() => {
     if (mounted) {
       loadSettings();
-      loadMonths();
     }
-  }, [mounted, FAMILY_SLUG]);
+  }, [mounted]);
 
   useEffect(() => {
-    if (selectedMonth) {
-      loadData(selectedMonth.month, selectedMonth.year);
+    if (mounted && familySlug) {
+      loadMonths(familySlug);
     }
-  }, [selectedMonth, FAMILY_SLUG]);
+  }, [mounted, familySlug]);
+
+  useEffect(() => {
+    if (selectedMonth && familySlug) {
+      loadData(selectedMonth.month, selectedMonth.year, familySlug);
+    }
+  }, [selectedMonth, familySlug]);
 
   const chartData = useMemo(() => {
     return summary?.categories ?? [];
@@ -351,22 +364,6 @@ export default function HomePage() {
         </>
       )}
 
-      <div className="pointer-events-none absolute inset-0 overflow-hidden text-3xl opacity-[0.07]">
-        {Array.from({ length: 40 }).map((_, i) => (
-          <span
-            key={i}
-            className="absolute"
-            style={{
-              top: `${Math.random() * 120}%`,
-              left: `${Math.random() * 100}%`,
-              transform: `rotate(${Math.random() * 360}deg)`,
-            }}
-          >
-            💸
-          </span>
-        ))}
-      </div>
-
       <div className="relative mx-auto max-w-md p-4 space-y-4">
         <div className="sticky top-0 z-30 flex items-center justify-between bg-green-50/95 px-2 py-2 backdrop-blur">
           <button onClick={() => setMenuOpen(true)} className="p-2">
@@ -400,6 +397,10 @@ export default function HomePage() {
           )}
 
           <div />
+        </div>
+
+        <div className="rounded-xl bg-blue-50 px-3 py-2 text-sm text-blue-800 shadow-sm">
+          משפחה פעילה: <strong>{familySlug || "לא נטען"}</strong>
         </div>
 
         {error && (
