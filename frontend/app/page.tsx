@@ -84,6 +84,18 @@ const categoryColors: Record<string, string> = {
   "אחר": "#94a3b8",
 };
 
+const expenseCategories = [
+  "סופר וקניות לבית",
+  "אוכל בחוץ וקפה",
+  "תחבורה",
+  "בריאות ופארם",
+  "דיור וחשבונות",
+  "בילויים ופנאי",
+  "אחר",
+];
+
+const incomeCategories = ["הכנסות", "אחר"];
+
 function formatCurrency(value: number) {
   return `₪${value.toLocaleString("he-IL", {
     minimumFractionDigits: 0,
@@ -93,11 +105,12 @@ function formatCurrency(value: number) {
 
 export default function HomePage() {
   const searchParams = useSearchParams();
+  const familySlug = searchParams.get("family") || "omer-family";
+  const familyQuery = `family=${encodeURIComponent(familySlug)}`;
 
   const [mounted, setMounted] = useState(false);
-  const [familySlug, setFamilySlug] = useState<string>("");
-
   const [menuOpen, setMenuOpen] = useState(false);
+
   const [months, setMonths] = useState<MonthOption[]>([]);
   const [selectedMonth, setSelectedMonth] = useState<MonthOption | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -122,17 +135,12 @@ export default function HomePage() {
     type: "expense",
   });
 
-  const backendUrl = "https://home-economics.onrender.com";
-  const familyQuery = `family=${encodeURIComponent(familySlug || "omer-family")}`;
+  const backendUrl =
+    process.env.NEXT_PUBLIC_API_URL || "https://home-economics.onrender.com";
 
   useEffect(() => {
     setMounted(true);
   }, []);
-
-  useEffect(() => {
-    const slug = searchParams.get("family") || "omer-family";
-    setFamilySlug(slug);
-  }, [searchParams]);
 
   useEffect(() => {
     return () => {
@@ -143,19 +151,23 @@ export default function HomePage() {
   }, []);
 
   async function loadSettings() {
-    const res = await fetch(`${backendUrl}/api/settings`);
-    const data: AppSettings = await res.json();
-    setTitle(data.dashboard_title);
-    setTitleDraft(data.dashboard_title);
+    try {
+      const res = await fetch(`${backendUrl}/api/settings`);
+      const data: AppSettings = await res.json();
+      setTitle(data.dashboard_title);
+      setTitleDraft(data.dashboard_title);
+    } catch (err) {
+      setError(String(err));
+    }
   }
 
-  async function loadMonths(currentFamilySlug: string) {
+  async function loadMonths() {
     try {
       setError("");
       setLoading(true);
 
       const res = await fetch(
-        `${backendUrl}/api/months?family_slug=${encodeURIComponent(currentFamilySlug)}`
+        `${backendUrl}/api/months?family_slug=${encodeURIComponent(familySlug)}`
       );
       const data: MonthOption[] = await res.json();
 
@@ -175,17 +187,17 @@ export default function HomePage() {
     }
   }
 
-  async function loadData(month: number, year: number, currentFamilySlug: string) {
+  async function loadData(month: number, year: number) {
     try {
       setLoading(true);
       setError("");
 
       const [summaryRes, txRes] = await Promise.all([
         fetch(
-          `${backendUrl}/api/summary?month=${month}&year=${year}&family_slug=${encodeURIComponent(currentFamilySlug)}`
+          `${backendUrl}/api/summary?month=${month}&year=${year}&family_slug=${encodeURIComponent(familySlug)}`
         ),
         fetch(
-          `${backendUrl}/api/transactions?month=${month}&year=${year}&family_slug=${encodeURIComponent(currentFamilySlug)}`
+          `${backendUrl}/api/transactions?month=${month}&year=${year}&family_slug=${encodeURIComponent(familySlug)}`
         ),
       ]);
 
@@ -205,12 +217,17 @@ export default function HomePage() {
   async function deleteTransaction(id: number) {
     try {
       setError("");
-      await fetch(`${backendUrl}/api/transactions/${id}`, {
+
+      const res = await fetch(`${backendUrl}/api/transactions/${id}`, {
         method: "DELETE",
       });
 
-      if (selectedMonth && familySlug) {
-        loadData(selectedMonth.month, selectedMonth.year, familySlug);
+      if (!res.ok) {
+        throw new Error("מחיקת הרשומה נכשלה");
+      }
+
+      if (selectedMonth) {
+        await loadData(selectedMonth.month, selectedMonth.year);
       }
     } catch (err) {
       setError(String(err));
@@ -220,7 +237,8 @@ export default function HomePage() {
   async function updateTransaction(id: number) {
     try {
       setError("");
-      await fetch(`${backendUrl}/api/transactions/${id}`, {
+
+      const res = await fetch(`${backendUrl}/api/transactions/${id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -233,10 +251,14 @@ export default function HomePage() {
         }),
       });
 
+      if (!res.ok) {
+        throw new Error("עדכון הרשומה נכשל");
+      }
+
       setEditingId(null);
 
-      if (selectedMonth && familySlug) {
-        loadData(selectedMonth.month, selectedMonth.year, familySlug);
+      if (selectedMonth) {
+        await loadData(selectedMonth.month, selectedMonth.year);
       }
     } catch (err) {
       setError(String(err));
@@ -264,7 +286,7 @@ export default function HomePage() {
 
   async function saveTitle() {
     try {
-      await fetch(`${backendUrl}/api/settings/title`, {
+      const res = await fetch(`${backendUrl}/api/settings/title`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -273,6 +295,10 @@ export default function HomePage() {
           dashboard_title: titleDraft,
         }),
       });
+
+      if (!res.ok) {
+        throw new Error("עדכון הכותרת נכשל");
+      }
 
       setTitle(titleDraft);
       setIsEditingTitle(false);
@@ -316,19 +342,22 @@ export default function HomePage() {
 
   useEffect(() => {
     if (mounted && familySlug) {
-      loadMonths(familySlug);
+      loadMonths();
     }
   }, [mounted, familySlug]);
 
   useEffect(() => {
     if (selectedMonth && familySlug) {
-      loadData(selectedMonth.month, selectedMonth.year, familySlug);
+      loadData(selectedMonth.month, selectedMonth.year);
     }
   }, [selectedMonth, familySlug]);
 
   const chartData = useMemo(() => {
     return summary?.categories ?? [];
   }, [summary]);
+
+  const categoryOptions =
+    editForm.type === "income" ? incomeCategories : expenseCategories;
 
   if (!mounted) return null;
 
@@ -397,10 +426,6 @@ export default function HomePage() {
           )}
 
           <div />
-        </div>
-
-        <div className="rounded-xl bg-blue-50 px-3 py-2 text-sm text-blue-800 shadow-sm">
-          משפחה פעילה: <strong>{familySlug || "לא נטען"}</strong>
         </div>
 
         {error && (
@@ -564,23 +589,34 @@ export default function HomePage() {
                       }
                     />
 
-                    <input
+                    <select
+                      className="w-full rounded-lg border p-2"
+                      value={editForm.type}
+                      onChange={(e) =>
+                        setEditForm({
+                          ...editForm,
+                          type: e.target.value,
+                          category:
+                            e.target.value === "income" ? "הכנסות" : "אחר",
+                        })
+                      }
+                    >
+                      <option value="expense">expense</option>
+                      <option value="income">income</option>
+                    </select>
+
+                    <select
                       className="w-full rounded-lg border p-2"
                       value={editForm.category}
                       onChange={(e) =>
                         setEditForm({ ...editForm, category: e.target.value })
                       }
-                    />
-
-                    <select
-                      className="w-full rounded-lg border p-2"
-                      value={editForm.type}
-                      onChange={(e) =>
-                        setEditForm({ ...editForm, type: e.target.value })
-                      }
                     >
-                      <option value="expense">expense</option>
-                      <option value="income">income</option>
+                      {categoryOptions.map((category) => (
+                        <option key={category} value={category}>
+                          {category}
+                        </option>
+                      ))}
                     </select>
 
                     <div className="flex gap-2">

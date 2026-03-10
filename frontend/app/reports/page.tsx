@@ -73,8 +73,8 @@ function formatCurrency(value: number) {
 
 export default function ReportsPage() {
   const searchParams = useSearchParams();
-
-  const [familySlug, setFamilySlug] = useState<string>("");
+  const familySlug = searchParams.get("family") || "omer-family";
+  const familyQuery = `family=${encodeURIComponent(familySlug)}`;
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [months, setMonths] = useState<MonthOption[]>([]);
@@ -87,32 +87,23 @@ export default function ReportsPage() {
   const backendUrl =
     process.env.NEXT_PUBLIC_API_URL || "https://home-economics.onrender.com";
 
-  const familyQuery = `family=${encodeURIComponent(familySlug || "omer-family")}`;
-
   useEffect(() => {
-    const slug = searchParams.get("family") || "omer-family";
-    setFamilySlug(slug);
-  }, [searchParams]);
-
-  useEffect(() => {
-    if (familySlug) {
-      loadMonths(familySlug);
-    }
+    loadMonths();
   }, [familySlug]);
 
   useEffect(() => {
-    if (selectedYear && familySlug) {
-      loadYearData(selectedYear, familySlug);
+    if (selectedYear) {
+      loadYearData(selectedYear);
     }
   }, [selectedYear, months, familySlug]);
 
-  async function loadMonths(currentFamilySlug: string) {
+  async function loadMonths() {
     try {
       setError("");
       setLoading(true);
 
       const res = await fetch(
-        `${backendUrl}/api/months?family_slug=${encodeURIComponent(currentFamilySlug)}`
+        `${backendUrl}/api/months?family_slug=${encodeURIComponent(familySlug)}`
       );
       const data: MonthOption[] = await res.json();
 
@@ -133,7 +124,7 @@ export default function ReportsPage() {
     }
   }
 
-  async function loadYearData(year: number, currentFamilySlug: string) {
+  async function loadYearData(year: number) {
     try {
       setLoading(true);
       setError("");
@@ -152,7 +143,7 @@ export default function ReportsPage() {
       const summaries: Summary[] = await Promise.all(
         yearMonths.map(async (m) => {
           const res = await fetch(
-            `${backendUrl}/api/summary?month=${m.month}&year=${m.year}&family_slug=${encodeURIComponent(currentFamilySlug)}`
+            `${backendUrl}/api/summary?month=${m.month}&year=${m.year}&family_slug=${encodeURIComponent(familySlug)}`
           );
           return res.json();
         })
@@ -239,10 +230,6 @@ export default function ReportsPage() {
           </h1>
 
           <div className="w-10" />
-        </div>
-
-        <div className="rounded-xl bg-blue-50 px-3 py-2 text-sm text-blue-800 shadow-sm">
-          משפחה פעילה: <strong>{familySlug || "לא נטען"}</strong>
         </div>
 
         {error && (
