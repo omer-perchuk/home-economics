@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
 import {
   Pencil,
@@ -91,6 +92,10 @@ function formatCurrency(value: number) {
 }
 
 export default function HomePage() {
+  const searchParams = useSearchParams();
+  const FAMILY_NAME = searchParams.get("family") || "משפחת עומר";
+  const familyQuery = `family=${encodeURIComponent(FAMILY_NAME)}`;
+
   const [mounted, setMounted] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -142,15 +147,23 @@ export default function HomePage() {
   async function loadMonths() {
     try {
       setError("");
-      const res = await fetch(`${backendUrl}/api/months`);
+      const res = await fetch(
+        `${backendUrl}/api/months?family_name=${encodeURIComponent(FAMILY_NAME)}`
+      );
       const data = await res.json();
       setMonths(data);
 
       if (data.length > 0) {
         setSelectedMonth(data[0]);
+      } else {
+        setSelectedMonth(null);
+        setSummary(null);
+        setTransactions([]);
+        setLoading(false);
       }
     } catch (err) {
       setError(String(err));
+      setLoading(false);
     }
   }
 
@@ -160,8 +173,12 @@ export default function HomePage() {
       setError("");
 
       const [summaryRes, txRes] = await Promise.all([
-        fetch(`${backendUrl}/api/summary?month=${month}&year=${year}`),
-        fetch(`${backendUrl}/api/transactions?month=${month}&year=${year}`),
+        fetch(
+          `${backendUrl}/api/summary?month=${month}&year=${year}&family_name=${encodeURIComponent(FAMILY_NAME)}`
+        ),
+        fetch(
+          `${backendUrl}/api/transactions?month=${month}&year=${year}&family_name=${encodeURIComponent(FAMILY_NAME)}`
+        ),
       ]);
 
       const summaryData = await summaryRes.json();
@@ -261,15 +278,9 @@ export default function HomePage() {
   }
 
   function handlePieClick(data: PieClickData) {
-    const category =
-      data.category ??
-      data.payload?.category ??
-      data.name;
+    const category = data.category ?? data.payload?.category ?? data.name;
 
-    const amount =
-      data.amount ??
-      data.payload?.amount ??
-      data.value;
+    const amount = data.amount ?? data.payload?.amount ?? data.value;
 
     if (!category || amount === undefined) {
       return;
@@ -295,13 +306,13 @@ export default function HomePage() {
       loadSettings();
       loadMonths();
     }
-  }, [mounted]);
+  }, [mounted, FAMILY_NAME]);
 
   useEffect(() => {
     if (selectedMonth) {
       loadData(selectedMonth.month, selectedMonth.year);
     }
-  }, [selectedMonth]);
+  }, [selectedMonth, FAMILY_NAME]);
 
   const chartData = useMemo(() => {
     return summary?.categories ?? [];
@@ -321,7 +332,7 @@ export default function HomePage() {
             <div className="text-xl font-bold text-green-600">תפריט</div>
 
             <Link
-              href="/"
+              href={`/?${familyQuery}`}
               onClick={() => setMenuOpen(false)}
               className="flex items-center gap-2 text-lg"
             >
@@ -330,7 +341,7 @@ export default function HomePage() {
             </Link>
 
             <Link
-              href="/reports"
+              href={`/reports?${familyQuery}`}
               onClick={() => setMenuOpen(false)}
               className="flex items-center gap-2 text-lg"
             >
@@ -402,9 +413,7 @@ export default function HomePage() {
           <select
             className="w-full rounded-lg border p-2"
             value={
-              selectedMonth
-                ? `${selectedMonth.month}-${selectedMonth.year}`
-                : ""
+              selectedMonth ? `${selectedMonth.month}-${selectedMonth.year}` : ""
             }
             onChange={(e) => {
               const [month, year] = e.target.value.split("-").map(Number);

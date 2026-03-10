@@ -1,8 +1,8 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   ResponsiveContainer,
   BarChart,
@@ -64,9 +64,6 @@ const categoryColors: Record<string, string> = {
   "אחר": "#94a3b8",
 };
 
-const searchParams = useSearchParams();
-const FAMILY_NAME = searchParams.get("family") || "משפחת עומר";
-
 function formatCurrency(value: number) {
   return `₪${value.toLocaleString("he-IL", {
     minimumFractionDigits: 0,
@@ -75,6 +72,10 @@ function formatCurrency(value: number) {
 }
 
 export default function ReportsPage() {
+  const searchParams = useSearchParams();
+  const FAMILY_NAME = searchParams.get("family") || "משפחת עומר";
+  const familyQuery = `family=${encodeURIComponent(FAMILY_NAME)}`;
+
   const [menuOpen, setMenuOpen] = useState(false);
   const [months, setMonths] = useState<MonthOption[]>([]);
   const [selectedYear, setSelectedYear] = useState<number | null>(null);
@@ -86,20 +87,19 @@ export default function ReportsPage() {
   const backendUrl =
     process.env.NEXT_PUBLIC_API_URL || "https://home-economics.onrender.com";
 
-useEffect(() => {
-  loadMonths();
-}, [FAMILY_NAME]);
+  useEffect(() => {
+    loadMonths();
+  }, [FAMILY_NAME]);
 
   useEffect(() => {
     if (selectedYear) {
       loadYearData(selectedYear);
     }
-  }, [selectedYear, months]);
+  }, [selectedYear, months, FAMILY_NAME]);
 
   async function loadMonths() {
     try {
       setError("");
-
       const res = await fetch(
         `${backendUrl}/api/months?family_name=${encodeURIComponent(FAMILY_NAME)}`
       );
@@ -112,6 +112,9 @@ useEffect(() => {
         setSelectedYear(years[0]);
       } else {
         setSelectedYear(new Date().getFullYear());
+        setChartData([]);
+        setAllCategories([]);
+        setLoading(false);
       }
     } catch (err) {
       setError(String(err));
@@ -193,7 +196,7 @@ useEffect(() => {
             <div className="text-xl font-bold text-green-600">תפריט</div>
 
             <Link
-              href="/"
+              href={`/?${familyQuery}`}
               onClick={() => setMenuOpen(false)}
               className="flex items-center gap-2 text-lg"
             >
@@ -202,7 +205,7 @@ useEffect(() => {
             </Link>
 
             <Link
-              href="/reports"
+              href={`/reports?${familyQuery}`}
               onClick={() => setMenuOpen(false)}
               className="flex items-center gap-2 text-lg"
             >
