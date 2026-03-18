@@ -1,5 +1,6 @@
 "use client";
 
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
@@ -95,8 +96,10 @@ function getDaysInMonth(month: number, year: number) {
 }
 
 export default function HomePage() {
-  const FAMILY_ID = 1;
-  const backendUrl = "http://localhost:8000";
+  const searchParams = useSearchParams();
+  const FAMILY_ID = Number(searchParams.get("family_id") || "1");
+  const backendUrl =
+    process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -365,7 +368,7 @@ export default function HomePage() {
             <div className="text-xl font-bold text-green-600">תפריט</div>
 
             <Link
-              href="/"
+              href={`/?family_id=${FAMILY_ID}`}
               onClick={() => setMenuOpen(false)}
               className="flex items-center gap-2 text-lg"
             >
@@ -374,7 +377,7 @@ export default function HomePage() {
             </Link>
 
             <Link
-              href="/reports"
+              href={`/reports?family_id=${FAMILY_ID}`}
               onClick={() => setMenuOpen(false)}
               className="flex items-center gap-2 text-lg"
             >

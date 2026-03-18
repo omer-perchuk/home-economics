@@ -1,5 +1,6 @@
 "use client";
 
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -71,8 +72,10 @@ function formatCurrency(value: number) {
 }
 
 export default function ReportsPage() {
-  const FAMILY_ID = 1;
-  const backendUrl = "http://localhost:8000";
+  const searchParams = useSearchParams();
+  const FAMILY_ID = Number(searchParams.get("family_id") || "1");
+  const backendUrl =
+    process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [months, setMonths] = useState<MonthOption[]>([]);
@@ -191,7 +194,7 @@ export default function ReportsPage() {
             <div className="text-xl font-bold text-green-600">תפריט</div>
 
             <Link
-              href="/"
+              href={`/?family_id=${FAMILY_ID}`}
               onClick={() => setMenuOpen(false)}
               className="flex items-center gap-2 text-lg"
             >
@@ -200,7 +203,7 @@ export default function ReportsPage() {
             </Link>
 
             <Link
-              href="/reports"
+              href={`/reports?family_id=${FAMILY_ID}`}
               onClick={() => setMenuOpen(false)}
               className="flex items-center gap-2 text-lg"
             >
