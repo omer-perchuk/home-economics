@@ -1,6 +1,5 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
@@ -96,8 +95,10 @@ function getDaysInMonth(month: number, year: number) {
 }
 
 export default function HomePage() {
-  const searchParams = useSearchParams();
-  const FAMILY_ID = Number(searchParams.get("family_id") || "1");
+  const FAMILY_ID =
+    typeof window !== "undefined"
+     ? Number(new URLSearchParams(window.location.search).get("family_id") || "1")
+      : 1;
   const backendUrl =
     process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
