@@ -1,17 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
 import {
   Pencil,
   Trash2,
   X,
   Check,
-  Home,
-  Menu,
-  FileBarChart2,
   Edit3,
+  Plus,
+  Menu,
+  Home,
+  FileBarChart2,
 } from "lucide-react";
 
 type MonthOption = {
@@ -46,6 +47,35 @@ type AppSettings = {
   dashboard_title: string;
 };
 
+type PieLabelProps = {
+  cx?: number;
+  cy?: number;
+  midAngle?: number;
+  outerRadius?: number;
+  percent?: number;
+  value?: number;
+};
+
+type PieClickData = {
+  category?: string;
+  name?: string;
+  payload?: {
+    category?: string;
+  };
+};
+
+const RADIAN = Math.PI / 180;
+
+const categories = [
+  "סופר וקניות לבית",
+  "אוכל בחוץ וקפה",
+  "תחבורה",
+  "בריאות ופארם",
+  "דיור וחשבונות",
+  "בילויים ופנאי",
+  "אחר",
+];
+
 const categoryColors: Record<string, string> = {
   "סופר וקניות לבית": "#3b82f6",
   "אוכל בחוץ וקפה": "#f59e0b",
@@ -53,7 +83,6 @@ const categoryColors: Record<string, string> = {
   "בריאות ופארם": "#ef4444",
   "דיור וחשבונות": "#8b5cf6",
   "בילויים ופנאי": "#ec4899",
-  הכנסות: "#22c55e",
   אחר: "#94a3b8",
 };
 
@@ -61,10 +90,15 @@ function formatCurrency(value: number) {
   return `₪${value.toLocaleString("he-IL")}`;
 }
 
+function getDaysInMonth(month: number, year: number) {
+  return new Date(year, month, 0).getDate();
+}
+
 export default function HomePage() {
   const FAMILY_ID = 1;
+  const backendUrl = "http://localhost:8000";
 
-  const backendUrl = "https://home-economics.onrender.com";
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const [months, setMonths] = useState<MonthOption[]>([]);
   const [selectedMonth, setSelectedMonth] = useState<MonthOption | null>(null);
@@ -72,21 +106,67 @@ export default function HomePage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [editing, setEditing] = useState<Transaction | null>(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+
+  const [editDescription, setEditDescription] = useState("");
+  const [editAmount, setEditAmount] = useState(0);
+  const [editCategory, setEditCategory] = useState("");
+  const [editType, setEditType] = useState("expense");
+  const [editDay, setEditDay] = useState(1);
+  const [editMonth, setEditMonth] = useState(1);
+
+  const [newDescription, setNewDescription] = useState("");
+  const [newAmount, setNewAmount] = useState(0);
+  const [newCategory, setNewCategory] = useState(categories[0]);
+  const [newType, setNewType] = useState("expense");
+  const [newDay, setNewDay] = useState(1);
+  const [newMonth, setNewMonth] = useState(1);
+
+  const [title, setTitle] = useState("כלכלת הבית");
+  const [titleDraft, setTitleDraft] = useState("כלכלת הבית");
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+
+  async function loadSettings() {
+    const res = await fetch(`${backendUrl}/api/settings?family_id=${FAMILY_ID}`);
+    const data: AppSettings = await res.json();
+
+    setTitle(data.dashboard_title || "כלכלת הבית");
+    setTitleDraft(data.dashboard_title || "כלכלת הבית");
+  }
+
+  async function saveTitle() {
+    await fetch(`${backendUrl}/api/settings/title?family_id=${FAMILY_ID}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        dashboard_title: titleDraft,
+      }),
+    });
+
+    setTitle(titleDraft || "כלכלת הבית");
+    setIsEditingTitle(false);
+  }
 
   async function loadMonths() {
-    const res = await fetch(
-      `${backendUrl}/api/months?family_id=${FAMILY_ID}`
-    );
+    const res = await fetch(`${backendUrl}/api/months?family_id=${FAMILY_ID}`);
     const data = await res.json();
+
     setMonths(data);
 
     if (data.length > 0) {
       setSelectedMonth(data[0]);
+      setNewMonth(data[0].month);
     }
   }
 
   async function loadData(month: number, year: number) {
+    setLoading(true);
+
     const [summaryRes, txRes] = await Promise.all([
       fetch(
         `${backendUrl}/api/summary?month=${month}&year=${year}&family_id=${FAMILY_ID}`
@@ -101,6 +181,7 @@ export default function HomePage() {
 
     setSummary(summaryData);
     setTransactions(txData);
+    setSelectedCategory(null);
     setLoading(false);
   }
 
@@ -114,13 +195,152 @@ export default function HomePage() {
     }
   }
 
+  function openEdit(tx: Transaction) {
+    setEditing(tx);
+    setEditDescription(tx.description);
+    setEditAmount(tx.amount);
+    setEditCategory(tx.category);
+    setEditType(tx.type);
+
+    const [dayStr, monthStr] = tx.date.split("/");
+    setEditDay(Number(dayStr));
+    setEditMonth(Number(monthStr));
+  }
+
+  async function saveEdit() {
+    if (!editing || !selectedMonth) return;
+
+    await fetch(`${backendUrl}/api/transactions/${editing.id}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        description: editDescription,
+        amount: editAmount,
+        category: editCategory,
+        type: editType,
+        day: editDay,
+        month: editMonth,
+        year: selectedMonth.year,
+      }),
+    });
+
+    setEditing(null);
+
+    if (selectedMonth) {
+      loadData(selectedMonth.month, selectedMonth.year);
+      loadMonths();
+    }
+  }
+
+  async function createTransaction() {
+    if (!selectedMonth) return;
+
+    await fetch(`${backendUrl}/api/transactions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        description: newDescription,
+        amount: newAmount,
+        category: newCategory,
+        type: newType,
+        day: newDay,
+        month: newMonth,
+        year: selectedMonth.year,
+        family_id: FAMILY_ID,
+      }),
+    });
+
+    setShowCreateModal(false);
+    setNewDescription("");
+    setNewAmount(0);
+    setNewCategory(categories[0]);
+    setNewType("expense");
+    setNewDay(1);
+    setNewMonth(selectedMonth.month);
+
+    loadMonths();
+    loadData(selectedMonth.month, selectedMonth.year);
+  }
+
+  function renderCustomLabel({
+    cx = 0,
+    cy = 0,
+    midAngle = 0,
+    outerRadius = 0,
+    percent = 0,
+    value = 0,
+  }: PieLabelProps) {
+    if (percent < 0.05) return null;
+
+    const sin = Math.sin(-RADIAN * midAngle);
+    const cos = Math.cos(-RADIAN * midAngle);
+
+    const sx = cx + (outerRadius + 6) * cos;
+    const sy = cy + (outerRadius + 6) * sin;
+
+    const mx = cx + (outerRadius + 22) * cos;
+    const my = cy + (outerRadius + 22) * sin;
+
+    const ex = mx + (cos >= 0 ? 18 : -18);
+    const ey = my;
+
+    const textAnchor = cos >= 0 ? "start" : "end";
+
+    return (
+      <g>
+        <path
+          d={`M${sx},${sy} L${mx},${my} L${ex},${ey}`}
+          stroke="#94a3b8"
+          fill="none"
+          strokeWidth={1.5}
+        />
+        <circle cx={ex} cy={ey} r={2} fill="#94a3b8" />
+        <text
+          x={ex + (cos >= 0 ? 6 : -6)}
+          y={ey - 2}
+          textAnchor={textAnchor}
+          fill="#0f172a"
+          fontSize={12}
+          fontWeight={700}
+        >
+          {formatCurrency(Number(value))}
+        </text>
+        <text
+          x={ex + (cos >= 0 ? 6 : -6)}
+          y={ey + 14}
+          textAnchor={textAnchor}
+          fill="#64748b"
+          fontSize={11}
+        >
+          {`${(percent * 100).toFixed(0)}%`}
+        </text>
+      </g>
+    );
+  }
+
+  function toggleCategory(category: string) {
+    setSelectedCategory((prev) => (prev === category ? null : category));
+  }
+
+  function handlePieClick(data: PieClickData) {
+    const category = data.category ?? data.payload?.category ?? data.name;
+    if (!category) return;
+    toggleCategory(category);
+  }
+
   useEffect(() => {
     loadMonths();
+    loadSettings();
   }, []);
 
   useEffect(() => {
     if (selectedMonth) {
       loadData(selectedMonth.month, selectedMonth.year);
+      setNewMonth(selectedMonth.month);
     }
   }, [selectedMonth]);
 
@@ -128,26 +348,90 @@ export default function HomePage() {
     return summary?.categories ?? [];
   }, [summary]);
 
+  const filteredTransactions = useMemo(() => {
+    if (!selectedCategory) return transactions;
+    return transactions.filter((tx) => tx.category === selectedCategory);
+  }, [transactions, selectedCategory]);
+
   return (
-    <main className="min-h-screen bg-green-50 text-slate-900">
+    <main className="relative min-h-screen bg-gradient-to-b from-green-50 via-emerald-50 to-lime-50 text-slate-900">
+      {menuOpen && (
+        <>
+          <div
+            className="fixed inset-0 z-40 bg-black/30"
+            onClick={() => setMenuOpen(false)}
+          />
+          <div className="fixed right-0 top-0 z-50 h-full w-64 space-y-6 bg-white p-5 shadow-xl">
+            <div className="text-xl font-bold text-green-600">תפריט</div>
+
+            <Link
+              href="/"
+              onClick={() => setMenuOpen(false)}
+              className="flex items-center gap-2 text-lg"
+            >
+              <Home size={20} />
+              דף הבית
+            </Link>
+
+            <Link
+              href="/reports"
+              onClick={() => setMenuOpen(false)}
+              className="flex items-center gap-2 text-lg"
+            >
+              <FileBarChart2 size={20} />
+              דוחות
+            </Link>
+          </div>
+        </>
+      )}
 
       <div className="mx-auto max-w-md p-4 space-y-4">
-
         <div className="flex items-center justify-between">
-          <button onClick={() => setMenuOpen(true)}>
+          <div className="w-10">
+            {!isEditingTitle && (
+              <button
+                onClick={() => setIsEditingTitle(true)}
+                className="text-gray-400 hover:text-blue-600"
+              >
+                <Edit3 size={16} />
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            {isEditingTitle ? (
+              <>
+                <input
+                  value={titleDraft}
+                  onChange={(e) => setTitleDraft(e.target.value)}
+                  className="rounded-lg border border-slate-300 px-3 py-1.5 shadow-sm"
+                />
+                <button onClick={saveTitle} className="text-green-600">
+                  <Check size={18} />
+                </button>
+                <button
+                  onClick={() => {
+                    setTitleDraft(title);
+                    setIsEditingTitle(false);
+                  }}
+                  className="text-gray-500"
+                >
+                  <X size={18} />
+                </button>
+              </>
+            ) : (
+              <h1 className="text-2xl font-bold text-green-600">💸 {title}</h1>
+            )}
+          </div>
+
+          <button onClick={() => setMenuOpen(true)} className="p-2">
             <Menu />
           </button>
-
-          <h1 className="text-2xl font-bold text-green-600">
-            💸 כלכלת הבית
-          </h1>
-
-          <div />
         </div>
 
-        <div className="rounded-xl bg-white p-3 shadow">
+        <div className="rounded-2xl border border-slate-100 bg-white p-3 shadow-md">
           <select
-            className="w-full rounded-lg border p-2"
+            className="w-full rounded-2xl border border-slate-200 bg-white p-3 text-right shadow-sm transition focus:outline-none focus:ring-2 focus:ring-green-400"
             value={
               selectedMonth
                 ? `${selectedMonth.month}-${selectedMonth.year}`
@@ -166,49 +450,139 @@ export default function HomePage() {
           </select>
         </div>
 
-        <div className="rounded-xl bg-green-700 text-white p-4">
-          <div>סה״כ הוצאות</div>
+        <div className="rounded-2xl bg-green-700 p-4 text-white shadow-sm">
+          <div className="text-sm opacity-90">סה״כ הוצאות</div>
           <div className="text-3xl font-bold">
             {summary ? formatCurrency(summary.expenses_total) : "₪0"}
           </div>
         </div>
 
-        <div className="rounded-xl bg-white p-4 shadow">
+        <div className="rounded-2xl bg-white p-4 shadow-sm">
+          <div className="mb-3 text-right text-lg font-semibold">
+            חלוקה לקטגוריות
+          </div>
 
-          <div className="h-72">
+          <div className="h-80">
             <ResponsiveContainer>
               <PieChart>
                 <Pie
                   data={chartData}
                   dataKey="amount"
                   nameKey="category"
-                  outerRadius={90}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={45}
+                  outerRadius={88}
+                  paddingAngle={3}
+                  stroke="#ffffff"
+                  strokeWidth={3}
+                  labelLine={false}
+                  label={renderCustomLabel}
+                  onClick={(data) => handlePieClick(data as PieClickData)}
                 >
                   {chartData.map((entry, index) => (
                     <Cell
                       key={index}
                       fill={categoryColors[entry.category] || "#94a3b8"}
+                      style={{
+                        cursor: "pointer",
+                        opacity:
+                          !selectedCategory || selectedCategory === entry.category
+                            ? 1
+                            : 0.45,
+                      }}
                     />
                   ))}
                 </Pie>
 
-                <Tooltip formatter={(value) => formatCurrency(Number(value))} />
+                <Tooltip
+                  formatter={(value) => formatCurrency(Number(value))}
+                  contentStyle={{
+                    borderRadius: "12px",
+                    border: "1px solid #e2e8f0",
+                    boxShadow: "0 4px 14px rgba(0,0,0,0.08)",
+                  }}
+                />
               </PieChart>
             </ResponsiveContainer>
+          </div>
+
+          <div className="mt-4 space-y-2">
+            {chartData.map((item) => {
+              const isSelected = selectedCategory === item.category;
+
+              return (
+                <button
+                  key={item.category}
+                  onClick={() => toggleCategory(item.category)}
+                  className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-right transition ${
+                    isSelected
+                      ? "bg-emerald-100 ring-1 ring-emerald-300"
+                      : "bg-slate-50 hover:bg-slate-100"
+                  }`}
+                >
+                  <span className="text-sm font-semibold text-slate-900">
+                    {formatCurrency(item.amount)}
+                  </span>
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-slate-700">
+                      {item.category}
+                    </span>
+                    <span
+                      className="h-3 w-3 rounded-full"
+                      style={{
+                        backgroundColor:
+                          categoryColors[item.category] || "#94a3b8",
+                      }}
+                    />
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </div>
 
         <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="rounded-xl bg-green-600 p-2 text-white shadow-sm hover:bg-green-700"
+            >
+              <Plus size={18} />
+            </button>
 
-          <div className="text-lg font-semibold">רשומות</div>
+            <div className="text-right text-lg font-semibold">רשומות</div>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-slate-500">
+              {selectedCategory ? `מסונן לפי: ${selectedCategory}` : "כל הרשומות"}
+            </div>
+
+            {selectedCategory && (
+              <button
+                onClick={() => setSelectedCategory(null)}
+                className="rounded-lg bg-slate-200 px-3 py-1 text-sm text-slate-700 hover:bg-slate-300"
+              >
+                נקה סינון
+              </button>
+            )}
+          </div>
 
           {loading ? (
-            <div>טוען...</div>
+            <div className="rounded-2xl bg-white p-3 text-right text-gray-500 shadow-sm">
+              טוען...
+            </div>
+          ) : filteredTransactions.length === 0 ? (
+            <div className="rounded-2xl bg-white p-3 text-right text-gray-500 shadow-sm">
+              אין רשומות לקטגוריה הזו
+            </div>
           ) : (
-            transactions.map((tx) => (
+            filteredTransactions.map((tx) => (
               <div
                 key={tx.id}
-                className="flex items-center justify-between rounded-xl bg-white p-3 shadow"
+                className="flex items-center justify-between rounded-2xl bg-white p-3 shadow-sm"
               >
                 <div>
                   <div className="font-semibold">{tx.description}</div>
@@ -217,10 +591,20 @@ export default function HomePage() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3">
                   <div className="font-bold">{formatCurrency(tx.amount)}</div>
 
-                  <button onClick={() => deleteTransaction(tx.id)}>
+                  <button
+                    onClick={() => openEdit(tx)}
+                    className="text-gray-500 hover:text-blue-600"
+                  >
+                    <Pencil size={18} />
+                  </button>
+
+                  <button
+                    onClick={() => deleteTransaction(tx.id)}
+                    className="text-gray-500 hover:text-red-600"
+                  >
                     <Trash2 size={18} />
                   </button>
                 </div>
@@ -229,6 +613,174 @@ export default function HomePage() {
           )}
         </div>
       </div>
+
+      {showCreateModal && selectedMonth && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black/30">
+          <div className="w-80 space-y-3 rounded-2xl bg-white p-5 shadow-lg">
+            <div className="text-right text-lg font-bold">הוספת רשומה</div>
+
+            <input
+              value={newDescription}
+              onChange={(e) => setNewDescription(e.target.value)}
+              className="w-full rounded-xl border border-slate-300 p-2"
+              placeholder="שם"
+            />
+
+            <input
+              type="number"
+              value={newAmount || ""}
+              onChange={(e) => setNewAmount(Number(e.target.value))}
+              className="w-full rounded-xl border border-slate-300 p-2"
+              placeholder="סכום"
+            />
+
+            <select
+              value={newCategory}
+              onChange={(e) => setNewCategory(e.target.value)}
+              className="w-full rounded-xl border border-slate-300 p-2"
+            >
+              {categories.map((c) => (
+                <option key={c}>{c}</option>
+              ))}
+            </select>
+
+            <select
+              value={newType}
+              onChange={(e) => setNewType(e.target.value)}
+              className="w-full rounded-xl border border-slate-300 p-2"
+            >
+              <option value="expense">הוצאה</option>
+              <option value="income">הכנסה</option>
+            </select>
+
+            <div className="grid grid-cols-2 gap-2">
+              <select
+                value={newDay}
+                onChange={(e) => setNewDay(Number(e.target.value))}
+                className="w-full rounded-xl border border-slate-300 p-2"
+              >
+                {Array.from(
+                  { length: getDaysInMonth(newMonth, selectedMonth.year) },
+                  (_, i) => i + 1
+                ).map((day) => (
+                  <option key={day} value={day}>
+                    יום {day}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={newMonth}
+                onChange={(e) => setNewMonth(Number(e.target.value))}
+                className="w-full rounded-xl border border-slate-300 p-2"
+              >
+                {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => (
+                  <option key={month} value={month}>
+                    חודש {month}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                onClick={() => setShowCreateModal(false)}
+                className="text-gray-500"
+              >
+                <X />
+              </button>
+
+              <button onClick={createTransaction} className="text-green-600">
+                <Check />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editing && selectedMonth && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black/30">
+          <div className="w-80 space-y-3 rounded-2xl bg-white p-5 shadow-lg">
+            <div className="text-right text-lg font-bold">עריכת רשומה</div>
+
+            <input
+              value={editDescription}
+              onChange={(e) => setEditDescription(e.target.value)}
+              className="w-full rounded-xl border border-slate-300 p-2"
+              placeholder="שם"
+            />
+
+            <input
+              type="number"
+              value={editAmount}
+              onChange={(e) => setEditAmount(Number(e.target.value))}
+              className="w-full rounded-xl border border-slate-300 p-2"
+              placeholder="סכום"
+            />
+
+            <select
+              value={editCategory}
+              onChange={(e) => setEditCategory(e.target.value)}
+              className="w-full rounded-xl border border-slate-300 p-2"
+            >
+              {categories.map((c) => (
+                <option key={c}>{c}</option>
+              ))}
+            </select>
+
+            <select
+              value={editType}
+              onChange={(e) => setEditType(e.target.value)}
+              className="w-full rounded-xl border border-slate-300 p-2"
+            >
+              <option value="expense">הוצאה</option>
+              <option value="income">הכנסה</option>
+            </select>
+
+            <div className="grid grid-cols-2 gap-2">
+              <select
+                value={editDay}
+                onChange={(e) => setEditDay(Number(e.target.value))}
+                className="w-full rounded-xl border border-slate-300 p-2"
+              >
+                {Array.from(
+                  { length: getDaysInMonth(editMonth, selectedMonth.year) },
+                  (_, i) => i + 1
+                ).map((day) => (
+                  <option key={day} value={day}>
+                    יום {day}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={editMonth}
+                onChange={(e) => setEditMonth(Number(e.target.value))}
+                className="w-full rounded-xl border border-slate-300 p-2"
+              >
+                {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => (
+                  <option key={month} value={month}>
+                    חודש {month}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                onClick={() => setEditing(null)}
+                className="text-gray-500"
+              >
+                <X />
+              </button>
+
+              <button onClick={saveEdit} className="text-green-600">
+                <Check />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

@@ -1,6 +1,7 @@
 from collections import defaultdict
 from datetime import datetime
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.db.models import Transaction
@@ -77,6 +78,8 @@ def get_transactions_for_month(
         t for t in transactions
         if t.created_at.month == month and t.created_at.year == year
     ]
+
+
 def get_transactions_by_month(
     db: Session,
     month: int,
@@ -84,6 +87,7 @@ def get_transactions_by_month(
     family_id: int | None = None,
 ):
     return get_transactions_for_month(db, month, year, family_id)
+
 
 def get_month_summary(
     db: Session,
@@ -120,6 +124,7 @@ def get_month_summary(
 
 
 def get_available_months(db: Session, family_id: int | None = None):
+
     query = db.query(Transaction).filter(Transaction.created_at.isnot(None))
 
     if family_id is not None:
@@ -127,16 +132,21 @@ def get_available_months(db: Session, family_id: int | None = None):
 
     transactions = query.all()
 
-    months = set()
+    unique_months = set()
+
     for t in transactions:
-        months.add((t.created_at.year, t.created_at.month))
+        unique_months.add((t.created_at.year, t.created_at.month))
 
-    result = [
-        {"year": year, "month": month}
-        for year, month in sorted(months, reverse=True)
+    # מיון מהחדש לישן
+    sorted_months = sorted(unique_months, reverse=True)
+
+    return [
+        {
+            "year": year,
+            "month": month,
+        }
+        for year, month in sorted_months
     ]
-
-    return result
 
 
 def delete_transaction_by_id(db: Session, transaction_id: int):

@@ -10,6 +10,7 @@ import {
   YAxis,
   Tooltip,
   CartesianGrid,
+  Cell,
 } from "recharts";
 import { Home, Menu, FileBarChart2 } from "lucide-react";
 
@@ -55,12 +56,11 @@ const monthNames: Record<number, string> = {
 const categoryColors: Record<string, string> = {
   "סופר וקניות לבית": "#3b82f6",
   "אוכל בחוץ וקפה": "#f59e0b",
-  "תחבורה": "#10b981",
+  תחבורה: "#10b981",
   "בריאות ופארם": "#ef4444",
   "דיור וחשבונות": "#8b5cf6",
   "בילויים ופנאי": "#ec4899",
-  "הכנסות": "#22c55e",
-  "אחר": "#94a3b8",
+  אחר: "#94a3b8",
 };
 
 function formatCurrency(value: number) {
@@ -72,119 +72,115 @@ function formatCurrency(value: number) {
 
 export default function ReportsPage() {
   const FAMILY_ID = 1;
+  const backendUrl = "http://localhost:8000";
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [months, setMonths] = useState<MonthOption[]>([]);
   const [selectedYear, setSelectedYear] = useState<number | null>(null);
+  const [selectedMonthKey, setSelectedMonthKey] = useState<string>("");
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [chartData, setChartData] = useState<ChartRow[]>([]);
-  const [allCategories, setAllCategories] = useState<string[]>([]);
 
-  const backendUrl =
-    process.env.NEXT_PUBLIC_API_URL || "https://home-economics.onrender.com";
+  const [yearSummaries, setYearSummaries] = useState<Summary[]>([]);
+  const [allCategories, setAllCategories] = useState<string[]>([]);
+  const [monthlyCategoryData, setMonthlyCategoryData] = useState<
+    SummaryCategory[]
+  >([]);
+
+  async function loadMonths() {
+    const res = await fetch(`${backendUrl}/api/months?family_id=${FAMILY_ID}`);
+    const data: MonthOption[] = await res.json();
+
+    setMonths(data);
+
+    if (data.length > 0) {
+      const latest = data[0];
+      setSelectedYear(latest.year);
+      setSelectedMonthKey(`${latest.month}-${latest.year}`);
+    }
+
+    setLoading(false);
+  }
+
+  async function loadYearData(year: number) {
+    const yearMonths = months
+      .filter((m) => m.year === year)
+      .sort((a, b) => a.month - b.month);
+
+    const summaries: Summary[] = await Promise.all(
+      yearMonths.map(async (m) => {
+        const res = await fetch(
+          `${backendUrl}/api/summary?month=${m.month}&year=${m.year}&family_id=${FAMILY_ID}`
+        );
+        return res.json();
+      })
+    );
+
+    setYearSummaries(summaries);
+
+    const categoriesSet = new Set<string>();
+    summaries.forEach((summary) => {
+      summary.categories.forEach((cat) => categoriesSet.add(cat.category));
+    });
+
+    setAllCategories(Array.from(categoriesSet));
+  }
+
+  async function loadSingleMonthSummary(month: number, year: number) {
+    const res = await fetch(
+      `${backendUrl}/api/summary?month=${month}&year=${year}&family_id=${FAMILY_ID}`
+    );
+    const summary: Summary = await res.json();
+    setMonthlyCategoryData(summary.categories);
+  }
 
   useEffect(() => {
     loadMonths();
   }, []);
 
   useEffect(() => {
-    if (selectedYear) {
+    if (selectedYear !== null && months.length > 0) {
       loadYearData(selectedYear);
     }
   }, [selectedYear, months]);
 
-  async function loadMonths() {
-    try {
-      setError("");
-      setLoading(true);
-
-      const res = await fetch(
-        `${backendUrl}/api/months?family_id=${FAMILY_ID}`
-      );
-      const data: MonthOption[] = await res.json();
-
-      setMonths(data);
-
-      if (data.length > 0) {
-        const years = [...new Set(data.map((m) => m.year))].sort((a, b) => b - a);
-        setSelectedYear(years[0]);
-      } else {
-        setSelectedYear(new Date().getFullYear());
-        setChartData([]);
-        setAllCategories([]);
-        setLoading(false);
-      }
-    } catch (err) {
-      setError(String(err));
-      setLoading(false);
+  useEffect(() => {
+    if (selectedMonthKey) {
+      const [month, year] = selectedMonthKey.split("-").map(Number);
+      loadSingleMonthSummary(month, year);
     }
-  }
-
-  async function loadYearData(year: number) {
-    try {
-      setLoading(true);
-      setError("");
-
-      const yearMonths = months
-        .filter((m) => m.year === year)
-        .sort((a, b) => a.month - b.month);
-
-      if (yearMonths.length === 0) {
-        setChartData([]);
-        setAllCategories([]);
-        setLoading(false);
-        return;
-      }
-
-      const summaries: Summary[] = await Promise.all(
-        yearMonths.map(async (m) => {
-          const res = await fetch(
-            `${backendUrl}/api/summary?month=${m.month}&year=${m.year}&family_id=${FAMILY_ID}`
-          );
-          return res.json();
-        })
-      );
-
-      const categoriesSet = new Set<string>();
-      summaries.forEach((summary) => {
-        summary.categories.forEach((cat) => categoriesSet.add(cat.category));
-      });
-
-      const categories = Array.from(categoriesSet);
-      setAllCategories(categories);
-
-      const rows: ChartRow[] = summaries.map((summary) => {
-        const row: ChartRow = {
-          monthLabel: monthNames[summary.month] || String(summary.month),
-        };
-
-        categories.forEach((catName) => {
-          row[catName] = 0;
-        });
-
-        summary.categories.forEach((cat) => {
-          row[cat.category] = cat.amount;
-        });
-
-        return row;
-      });
-
-      setChartData(rows);
-    } catch (err) {
-      setError(String(err));
-    } finally {
-      setLoading(false);
-    }
-  }
+  }, [selectedMonthKey]);
 
   const availableYears = useMemo(() => {
-    const years = [...new Set(months.map((m) => m.year))].sort((a, b) => b - a);
-    return years;
+    return [...new Set(months.map((m) => m.year))].sort((a, b) => b - a);
   }, [months]);
 
+  const monthsInSelectedYear = useMemo(() => {
+    if (selectedYear === null) return [];
+    return months
+      .filter((m) => m.year === selectedYear)
+      .sort((a, b) => a.month - b.month);
+  }, [months, selectedYear]);
+
+  const annualChartData = useMemo(() => {
+    return yearSummaries.map((summary) => {
+      const row: ChartRow = {
+        monthLabel: monthNames[summary.month] || String(summary.month),
+      };
+
+      allCategories.forEach((cat) => {
+        row[cat] = 0;
+      });
+
+      summary.categories.forEach((cat) => {
+        row[cat.category] = cat.amount;
+      });
+
+      return row;
+    });
+  }, [yearSummaries, allCategories]);
+
   return (
-    <main className="relative min-h-screen overflow-hidden bg-gradient-to-b from-green-50 via-emerald-50 to-lime-50 text-slate-900">
+    <main className="relative min-h-screen bg-gradient-to-b from-green-50 via-emerald-50 to-lime-50 text-slate-900">
       {menuOpen && (
         <>
           <div
@@ -215,33 +211,19 @@ export default function ReportsPage() {
         </>
       )}
 
-      <div className="relative mx-auto max-w-md space-y-6 p-4">
-        <div className="sticky top-0 z-30 flex items-center justify-between rounded-[2rem] border border-green-100 bg-white/95 px-6 py-6 shadow-[0_0_0_1px_rgba(34,197,94,0.05),0_8px_24px_rgba(16,185,129,0.08)] backdrop-blur">
-          <button onClick={() => setMenuOpen(true)} className="p-2 text-slate-900">
-            <Menu size={30} />
-          </button>
-
-          <h1 className="flex items-center gap-2 text-3xl font-bold text-green-700">
-            <span>💸</span>
-            <span>דוחות</span>
-          </h1>
-
+      <div className="mx-auto max-w-md p-4 space-y-4">
+        <div className="flex items-center justify-between">
           <div className="w-10" />
+          <h1 className="text-2xl font-bold text-green-600">📊 דוחות</h1>
+          <button onClick={() => setMenuOpen(true)} className="p-2">
+            <Menu />
+          </button>
         </div>
 
-        {error && (
-          <div className="rounded-2xl bg-red-50 p-4 text-sm text-red-700 shadow-sm">
-            {error}
-          </div>
-        )}
-
-        <div className="rounded-[2rem] border border-green-100 bg-white p-6 shadow-[0_8px_24px_rgba(16,185,129,0.08)]">
-          <label className="mb-4 block text-2xl font-medium text-slate-800">
-            בחירת שנה
-          </label>
-
+        <div className="space-y-4 rounded-2xl bg-white p-4 shadow-sm">
+          <div className="text-right font-semibold">בחירת שנה</div>
           <select
-            className="w-full rounded-[1.2rem] border-2 border-slate-800 bg-white p-4 text-xl"
+            className="w-full rounded-xl border border-slate-200 p-3 text-right"
             value={selectedYear ?? ""}
             onChange={(e) => setSelectedYear(Number(e.target.value))}
           >
@@ -253,24 +235,18 @@ export default function ReportsPage() {
           </select>
         </div>
 
-        <div className="rounded-[2rem] border border-green-100 bg-white p-6 shadow-[0_8px_24px_rgba(16,185,129,0.08)]">
-          <div className="mb-6 text-3xl font-bold text-slate-900">
-            הוצאות לפי חודשים בשנת {selectedYear}
+        <div className="rounded-2xl bg-white p-4 shadow-sm">
+          <div className="mb-4 text-right text-lg font-semibold">
+            דוח הוצאות שנתי
           </div>
 
-          <div className="h-[520px] w-full">
+          <div className="h-80">
             {loading ? (
-              <div className="flex h-full items-center justify-center text-slate-500">
-                טוען נתונים...
-              </div>
-            ) : chartData.length === 0 ? (
-              <div className="flex h-full items-center justify-center text-slate-500">
-                אין נתונים לשנה הזו
-              </div>
+              <div className="text-center text-gray-500">טוען...</div>
             ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData}>
-                  <CartesianGrid strokeDasharray="4 4" />
+              <ResponsiveContainer>
+                <BarChart data={annualChartData}>
+                  <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="monthLabel" />
                   <YAxis />
                   <Tooltip formatter={(value) => formatCurrency(Number(value))} />
@@ -280,32 +256,69 @@ export default function ReportsPage() {
                       dataKey={category}
                       stackId="a"
                       fill={categoryColors[category] || "#94a3b8"}
-                      radius={[4, 4, 0, 0]}
                     />
                   ))}
                 </BarChart>
               </ResponsiveContainer>
             )}
           </div>
+
+          <div className="mt-4 space-y-2">
+            {allCategories.map((category) => (
+              <div
+                key={category}
+                className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2"
+              >
+                <span className="text-sm text-slate-700">{category}</span>
+                <span
+                  className="h-3 w-3 rounded-full"
+                  style={{
+                    backgroundColor: categoryColors[category] || "#94a3b8",
+                  }}
+                />
+              </div>
+            ))}
+          </div>
         </div>
 
-        <div className="rounded-[2rem] border border-green-100 bg-white p-6 shadow-[0_8px_24px_rgba(16,185,129,0.08)]">
-          <div className="mb-4 text-3xl font-bold text-slate-900">מקרא קטגוריות</div>
+        <div className="space-y-3 rounded-2xl bg-white p-4 shadow-sm">
+          <div className="text-right font-semibold">בחירת חודש לדוח חודשי</div>
 
-          <div className="space-y-3">
-            {allCategories.length === 0 ? (
-              <div className="text-slate-500">אין קטגוריות להצגה</div>
-            ) : (
-              allCategories.map((category) => (
-                <div key={category} className="flex items-center gap-3">
-                  <span
-                    className="h-4 w-4 rounded-full"
-                    style={{ backgroundColor: categoryColors[category] || "#94a3b8" }}
-                  />
-                  <span className="text-lg text-slate-800">{category}</span>
-                </div>
-              ))
-            )}
+          <select
+            className="w-full rounded-xl border border-slate-200 p-3 text-right"
+            value={selectedMonthKey}
+            onChange={(e) => setSelectedMonthKey(e.target.value)}
+          >
+            {monthsInSelectedYear.map((m) => (
+              <option key={`${m.month}-${m.year}`} value={`${m.month}-${m.year}`}>
+                {m.month}/{m.year}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="rounded-2xl bg-white p-4 shadow-sm">
+          <div className="mb-4 text-right text-lg font-semibold">
+            דוח הוצאות חודשי לפי קטגוריה
+          </div>
+
+          <div className="h-80">
+            <ResponsiveContainer>
+              <BarChart data={monthlyCategoryData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="category" />
+                <YAxis />
+                <Tooltip formatter={(value) => formatCurrency(Number(value))} />
+                <Bar dataKey="amount">
+                  {monthlyCategoryData.map((entry, index) => (
+                    <Cell
+                      key={index}
+                      fill={categoryColors[entry.category] || "#94a3b8"}
+                    />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
           </div>
         </div>
       </div>
