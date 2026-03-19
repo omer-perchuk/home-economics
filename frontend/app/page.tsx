@@ -1,10 +1,5 @@
 "use client";
 
-import HomePage from "./home_page/page";
-
-export default function Page() {
-  return <HomePage />;
-}
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
@@ -447,8 +442,7 @@ export default function HomePage() {
           </label>
 
           <select
-            className="w-full rounded-[1.4rem] border-2 border-slate-200 bg-gradient-to-b from-white to-slate-50 px-5 py-4 text-right text-2xl font-semibold text-slate-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.8),0_2px_8px_rgba(15,23,42,0.06)] transition focus:border-green-400 focus:outline-none focus:ring-4 focus:ring-green-100"
-            value={
+            className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2 text-right text-base font-medium text-slate-700 shadow-sm focus:border-green-400 focus:outline-none focus:ring-2 focus:ring-green-100"            value={
               selectedMonth
                 ? `${selectedMonth.month}-${selectedMonth.year}`
                 : ""
@@ -466,12 +460,12 @@ export default function HomePage() {
           </select>
         </div>
 
-        <div className="rounded-[2rem] bg-gradient-to-br from-green-600 via-green-700 to-emerald-800 px-6 py-7 text-white shadow-[0_12px_30px_rgba(22,101,52,0.28)]">
+        <div className="rounded-[2rem] bg-gradient-to-br from-green-600 via-green-700 to-emerald-800 px-1 py-1 text-white shadow-[0_12px_30px_rgba(22,101,52,0.28)]">
           <div className="text-center text-lg font-medium tracking-wide text-white/85">
             סה״כ הוצאות
           </div>
 
-          <div className="mt-3 text-center text-5xl font-extrabold leading-none">
+          <div className="mt-1 text-center text-5xl font-bold leading-none">
             {summary ? formatCurrency(summary.expenses_total) : "₪0"}
           </div>
 
