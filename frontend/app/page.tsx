@@ -1,5 +1,10 @@
 "use client";
 
+import HomePage from "./home_page/page";
+
+export default function Page() {
+  return <HomePage />;
+}
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
@@ -97,8 +102,11 @@ function getDaysInMonth(month: number, year: number) {
 export default function HomePage() {
   const FAMILY_ID =
     typeof window !== "undefined"
-     ? Number(new URLSearchParams(window.location.search).get("family_id") || "1")
+      ? Number(
+          new URLSearchParams(window.location.search).get("family_id") || "1"
+        )
       : 1;
+
   const backendUrl =
     process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -433,9 +441,13 @@ export default function HomePage() {
           </button>
         </div>
 
-        <div className="rounded-2xl border border-slate-100 bg-white p-3 shadow-md">
+        <div className="rounded-[2rem] border border-green-100 bg-white p-4 shadow-[0_8px_24px_rgba(16,185,129,0.08)]">
+          <label className="mb-3 block text-right text-sm font-medium text-slate-500">
+            בחירת חודש
+          </label>
+
           <select
-            className="w-full rounded-2xl border border-slate-200 bg-white p-3 text-right shadow-sm transition focus:outline-none focus:ring-2 focus:ring-green-400"
+            className="w-full rounded-[1.4rem] border-2 border-slate-200 bg-gradient-to-b from-white to-slate-50 px-5 py-4 text-right text-2xl font-semibold text-slate-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.8),0_2px_8px_rgba(15,23,42,0.06)] transition focus:border-green-400 focus:outline-none focus:ring-4 focus:ring-green-100"
             value={
               selectedMonth
                 ? `${selectedMonth.month}-${selectedMonth.year}`
@@ -454,10 +466,17 @@ export default function HomePage() {
           </select>
         </div>
 
-        <div className="rounded-2xl bg-green-700 p-4 text-white shadow-sm">
-          <div className="text-sm opacity-90">סה״כ הוצאות</div>
-          <div className="text-3xl font-bold">
+        <div className="rounded-[2rem] bg-gradient-to-br from-green-600 via-green-700 to-emerald-800 px-6 py-7 text-white shadow-[0_12px_30px_rgba(22,101,52,0.28)]">
+          <div className="text-center text-lg font-medium tracking-wide text-white/85">
+            סה״כ הוצאות
+          </div>
+
+          <div className="mt-3 text-center text-5xl font-extrabold leading-none">
             {summary ? formatCurrency(summary.expenses_total) : "₪0"}
+          </div>
+
+          <div className="mt-3 text-center text-sm text-white/75">
+            {selectedMonth ? `${selectedMonth.month}/${selectedMonth.year}` : ""}
           </div>
         </div>
 
