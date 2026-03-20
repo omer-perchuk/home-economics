@@ -15,6 +15,7 @@ class Family(Base):
     name = Column(String, nullable=False, unique=True)
     twilio_whatsapp_number = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    dashboard_title = Column(String, nullable=False, default="כלכלת הבית")
 
     users = relationship("User", back_populates="family", cascade="all, delete-orphan")
     transactions = relationship("Transaction", back_populates="family", cascade="all, delete-orphan")
