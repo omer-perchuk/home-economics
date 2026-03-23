@@ -1,5 +1,6 @@
 from collections import defaultdict
 from datetime import datetime
+from typing import Optional
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -45,7 +46,7 @@ def parse_month_input(text: str):
     return None
 
 
-def get_current_month_transactions(db: Session, family_id: int | None = None):
+def get_current_month_transactions(db: Session, family_id: Optional[int] = None):
     now = datetime.utcnow()
 
     query = db.query(Transaction).filter(Transaction.created_at.isnot(None))
@@ -65,7 +66,7 @@ def get_transactions_for_month(
     db: Session,
     month: int,
     year: int,
-    family_id: int | None = None,
+    family_id: Optional[int] = None,
 ):
     query = db.query(Transaction).filter(Transaction.created_at.isnot(None))
 
@@ -84,7 +85,7 @@ def get_transactions_by_month(
     db: Session,
     month: int,
     year: int,
-    family_id: int | None = None,
+    family_id: Optional[int] = None,
 ):
     return get_transactions_for_month(db, month, year, family_id)
 
@@ -93,7 +94,7 @@ def get_month_summary(
     db: Session,
     month: int,
     year: int,
-    family_id: int | None = None,
+    family_id: Optional[int] = None,
 ):
     month_transactions = get_transactions_for_month(db, month, year, family_id)
 
@@ -123,7 +124,7 @@ def get_month_summary(
     }
 
 
-def get_available_months(db: Session, family_id: int | None = None):
+def get_available_months(db: Session, family_id: Optional[int] = None):
 
     query = db.query(Transaction).filter(Transaction.created_at.isnot(None))
 
@@ -165,7 +166,7 @@ def delete_transaction_by_id(db: Session, transaction_id: int):
     return transaction
 
 
-def get_category_summary(db: Session, family_id: int | None = None):
+def get_category_summary(db: Session, family_id: Optional[int] = None):
     query = db.query(Transaction)
 
     if family_id is not None:

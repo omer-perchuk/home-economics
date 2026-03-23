@@ -114,6 +114,8 @@ function getDaysInMonth(month: number, year: number) {
 }
 
 export default function HomePage() {
+  console.log("categories:", categories);
+
   const FAMILY_ID =
     typeof window !== "undefined"
       ? Number(

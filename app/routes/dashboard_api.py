@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
@@ -31,14 +32,14 @@ class TransactionUpdate(BaseModel):
     amount: float
     category: str
     type: str
-    day: int | None = None
-    month: int | None = None
-    year: int | None = None
+    day: Optional[int] = None
+    month: Optional[int] = None
+    year: Optional[int] = None
 
 
 @router.get("/months")
 def api_months(
-    family_id: int | None = Query(default=None),
+    family_id: Optional[int] = Query(default=None),
     db: Session = Depends(get_db),
 ):
     return get_available_months(db, family_id=family_id)
@@ -48,7 +49,7 @@ def api_months(
 def api_summary(
     month: int,
     year: int,
-    family_id: int | None = Query(default=None),
+    family_id: Optional[int] = Query(default=None),
     db: Session = Depends(get_db),
 ):
     return get_month_summary(db, month, year, family_id=family_id)
@@ -58,7 +59,7 @@ def api_summary(
 def api_transactions(
     month: int,
     year: int,
-    family_id: int | None = Query(default=None),
+    family_id: Optional[int] = Query(default=None),
     db: Session = Depends(get_db),
 ):
     transactions = get_transactions_by_month(db, month, year, family_id=family_id)

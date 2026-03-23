@@ -7,7 +7,7 @@ from twilio.rest import Client
 
 from app.db.database import get_db
 from app.db.models import Transaction
-from app.services.parser_service import parse_expense_text
+from app.services.ai_categorizer import categorize_transaction_text
 from app.services.report_service import (
     get_current_month_transactions,
     get_month_summary,
@@ -69,7 +69,8 @@ async def whatsapp_webhook(
 ):
     form = await request.form()
 
-    message = form.get("Body", "").strip().lower()
+    raw_message = form.get("Body", "").strip()
+    message = raw_message.lower()
     sender = form.get("From", "")
 
     user, family = get_user_and_family_by_phone(db, sender)
@@ -82,7 +83,7 @@ async def whatsapp_webhook(
         )
         return build_empty_ok_response()
 
-    print("Incoming message:", message)
+    print("Incoming message:", raw_message)
 
     user_state = get_user_state(sender)
     command = detect_command(message)
@@ -221,9 +222,9 @@ async def whatsapp_webhook(
             )
             return build_empty_ok_response()
 
-        parsed = parse_expense_text(message)
+        ai_result = categorize_transaction_text(raw_message)
 
-        if parsed["amount"] is None:
+        if ai_result["amount"] <= 0:
             background_tasks.add_task(
                 send_whatsapp_message,
                 sender,
@@ -231,11 +232,11 @@ async def whatsapp_webhook(
             )
             return build_empty_ok_response()
 
-        transaction.original_text = parsed["original_text"]
-        transaction.description = parsed["description"]
-        transaction.amount = parsed["amount"]
-        transaction.type = parsed["type"]
-        transaction.category = parsed["category"]
+        transaction.original_text = ai_result["original_text"]
+        transaction.description = ai_result["description"]
+        transaction.amount = ai_result["amount"]
+        transaction.type = ai_result["type"]
+        transaction.category = ai_result["category"]
 
         db.commit()
 
@@ -375,15 +376,15 @@ async def whatsapp_webhook(
     # ===============================
     # הוספת הוצאה / הכנסה
     # ===============================
-    parsed = parse_expense_text(message)
+    ai_result = categorize_transaction_text(raw_message)
 
-    if parsed["amount"] is not None:
+    if ai_result["amount"] > 0:
         transaction = Transaction(
-            original_text=parsed["original_text"],
-            description=parsed["description"],
-            amount=parsed["amount"],
-            type=parsed["type"],
-            category=parsed["category"],
+            original_text=ai_result["original_text"],
+            description=ai_result["description"],
+            amount=ai_result["amount"],
+            type=ai_result["type"],
+            category=ai_result["category"],
             family_id=family.id,
             user_id=user.id,
             user_phone=user.phone,
@@ -395,7 +396,7 @@ async def whatsapp_webhook(
         background_tasks.add_task(
             send_whatsapp_message,
             sender,
-            format_added_transaction_message(parsed)
+            format_added_transaction_message(ai_result)
         )
         return build_empty_ok_response()
 
