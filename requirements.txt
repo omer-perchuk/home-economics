@@ -4,3 +4,4 @@ sqlalchemy
 psycopg2-binary
 twilio
 python-multipart
+openai
