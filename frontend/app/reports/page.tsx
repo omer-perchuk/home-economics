@@ -75,8 +75,8 @@ export default function ReportsPage() {
     typeof window !== "undefined"
       ? Number(new URLSearchParams(window.location.search).get("family_id") || "1")
       : 1;
-  const backendUrl =
-    process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+  const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [months, setMonths] = useState<MonthOption[]>([]);
@@ -91,50 +91,116 @@ export default function ReportsPage() {
   >([]);
 
   async function loadMonths() {
-    const res = await fetch(`${backendUrl}/api/months?family_id=${FAMILY_ID}`);
-    const data: MonthOption[] = await res.json();
+    try {
+      const res = await fetch(`${backendUrl}/api/months?family_id=${FAMILY_ID}`);
 
-    setMonths(data);
+      if (!res.ok) {
+        console.error("loadMonths failed:", res.status, res.statusText);
+        setMonths([]);
+        setLoading(false);
+        return;
+      }
 
-    if (data.length > 0) {
-      const latest = data[0];
-      setSelectedYear(latest.year);
-      setSelectedMonthKey(`${latest.month}-${latest.year}`);
+      const data = await res.json();
+
+      if (!Array.isArray(data)) {
+        console.error("loadMonths expected array but got:", data);
+        setMonths([]);
+        setLoading(false);
+        return;
+      }
+
+      setMonths(data);
+
+      if (data.length > 0) {
+        const latest = data[0];
+        setSelectedYear(latest.year);
+        setSelectedMonthKey(`${latest.month}-${latest.year}`);
+      }
+
+      setLoading(false);
+    } catch (error) {
+      console.error("loadMonths error:", error);
+      setMonths([]);
+      setLoading(false);
     }
-
-    setLoading(false);
   }
 
   async function loadYearData(year: number) {
-    const yearMonths = months
-      .filter((m) => m.year === year)
-      .sort((a, b) => a.month - b.month);
+    try {
+      const yearMonths = months
+        .filter((m) => m.year === year)
+        .sort((a, b) => a.month - b.month);
 
-    const summaries: Summary[] = await Promise.all(
-      yearMonths.map(async (m) => {
-        const res = await fetch(
-          `${backendUrl}/api/summary?month=${m.month}&year=${m.year}&family_id=${FAMILY_ID}`
+      const summaries: Summary[] = await Promise.all(
+        yearMonths.map(async (m) => {
+          const res = await fetch(
+            `${backendUrl}/api/summary?month=${m.month}&year=${m.year}&family_id=${FAMILY_ID}`
+          );
+
+          if (!res.ok) {
+            console.error("loadYearData summary failed:", m, res.status);
+            return {
+              month: m.month,
+              year: m.year,
+              expenses_total: 0,
+              income_total: 0,
+              balance: 0,
+              categories: [],
+            };
+          }
+
+          const json = await res.json();
+
+          return {
+            month: Number(json?.month ?? m.month),
+            year: Number(json?.year ?? m.year),
+            expenses_total: Number(json?.expenses_total ?? 0),
+            income_total: Number(json?.income_total ?? 0),
+            balance: Number(json?.balance ?? 0),
+            categories: Array.isArray(json?.categories) ? json.categories : [],
+          };
+        })
+      );
+
+      setYearSummaries(summaries);
+
+      const categoriesSet = new Set<string>();
+      summaries.forEach((summary) => {
+        (Array.isArray(summary.categories) ? summary.categories : []).forEach((cat) =>
+          categoriesSet.add(cat.category)
         );
-        return res.json();
-      })
-    );
+      });
 
-    setYearSummaries(summaries);
-
-    const categoriesSet = new Set<string>();
-    summaries.forEach((summary) => {
-      summary.categories.forEach((cat) => categoriesSet.add(cat.category));
-    });
-
-    setAllCategories(Array.from(categoriesSet));
+      setAllCategories(Array.from(categoriesSet));
+    } catch (error) {
+      console.error("loadYearData error:", error);
+      setYearSummaries([]);
+      setAllCategories([]);
+    }
   }
 
   async function loadSingleMonthSummary(month: number, year: number) {
-    const res = await fetch(
-      `${backendUrl}/api/summary?month=${month}&year=${year}&family_id=${FAMILY_ID}`
-    );
-    const summary: Summary = await res.json();
-    setMonthlyCategoryData(summary.categories);
+    try {
+      const res = await fetch(
+        `${backendUrl}/api/summary?month=${month}&year=${year}&family_id=${FAMILY_ID}`
+      );
+
+      if (!res.ok) {
+        console.error("loadSingleMonthSummary failed:", res.status, res.statusText);
+        setMonthlyCategoryData([]);
+        return;
+      }
+
+      const summary = await res.json();
+
+      setMonthlyCategoryData(
+        Array.isArray(summary?.categories) ? summary.categories : []
+      );
+    } catch (error) {
+      console.error("loadSingleMonthSummary error:", error);
+      setMonthlyCategoryData([]);
+    }
   }
 
   useEffect(() => {
@@ -155,11 +221,12 @@ export default function ReportsPage() {
   }, [selectedMonthKey]);
 
   const availableYears = useMemo(() => {
+    if (!Array.isArray(months)) return [];
     return [...new Set(months.map((m) => m.year))].sort((a, b) => b - a);
   }, [months]);
 
   const monthsInSelectedYear = useMemo(() => {
-    if (selectedYear === null) return [];
+    if (selectedYear === null || !Array.isArray(months)) return [];
     return months
       .filter((m) => m.year === selectedYear)
       .sort((a, b) => a.month - b.month);
@@ -175,7 +242,7 @@ export default function ReportsPage() {
         row[cat] = 0;
       });
 
-      summary.categories.forEach((cat) => {
+      (Array.isArray(summary.categories) ? summary.categories : []).forEach((cat) => {
         row[cat.category] = cat.amount;
       });
 
@@ -215,7 +282,7 @@ export default function ReportsPage() {
         </>
       )}
 
-      <div className="mx-auto max-w-md p-4 space-y-4">
+      <div className="mx-auto max-w-md space-y-4 p-4">
         <div className="flex items-center justify-between">
           <div className="w-10" />
           <h1 className="text-2xl font-bold text-green-600">📊 דוחות</h1>
@@ -248,7 +315,7 @@ export default function ReportsPage() {
             {loading ? (
               <div className="text-center text-gray-500">טוען...</div>
             ) : (
-              <ResponsiveContainer>
+              <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={annualChartData}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="monthLabel" />
@@ -307,19 +374,21 @@ export default function ReportsPage() {
           </div>
 
           <div className="h-80">
-            <ResponsiveContainer>
-              <BarChart data={monthlyCategoryData}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={Array.isArray(monthlyCategoryData) ? monthlyCategoryData : []}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="category" />
                 <YAxis />
                 <Tooltip formatter={(value) => formatCurrency(Number(value))} />
                 <Bar dataKey="amount">
-                  {monthlyCategoryData.map((entry, index) => (
-                    <Cell
-                      key={index}
-                      fill={categoryColors[entry.category] || "#94a3b8"}
-                    />
-                  ))}
+                  {(Array.isArray(monthlyCategoryData) ? monthlyCategoryData : []).map(
+                    (entry, index) => (
+                      <Cell
+                        key={index}
+                        fill={categoryColors[entry.category] || "#94a3b8"}
+                      />
+                    )
+                  )}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
