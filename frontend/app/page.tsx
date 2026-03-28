@@ -89,22 +89,23 @@ const categories = [
 const categoryColors: Record<string, string> = {
   "סופר וקניות לבית": "#3b82f6",
   "אוכל בחוץ וקפה": "#f59e0b",
-  "תחבורה": "#10b981",
+  תחבורה: "#10b981",
   "בריאות ופארם": "#ef4444",
   "דיור וחשבונות": "#8b5cf6",
   "בילויים ופנאי": "#ec4899",
   "ביגוד והנעלה": "#f97316",
   "ילדים ומשפחה": "#14b8a6",
-  "לימודים": "#6366f1",
+  לימודים: "#6366f1",
   "חופשות ונסיעות": "#06b6d4",
   "מתנות ותרומות": "#d946ef",
-  "ביטוחים": "#64748b",
+  ביטוחים: "#64748b",
   "חיות מחמד": "#84cc16",
-  "משכורת": "#22c55e",
-  "החזרים": "#0ea5e9",
-  "הכנסות": "#16a34a",
-  "אחר": "#94a3b8",
+  משכורת: "#22c55e",
+  החזרים: "#0ea5e9",
+  הכנסות: "#16a34a",
+  אחר: "#94a3b8",
 };
+
 function formatCurrency(value: number) {
   return `₪${value.toLocaleString("he-IL")}`;
 }
@@ -158,68 +159,174 @@ export default function HomePage() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
   async function loadSettings() {
-    const res = await fetch(`${backendUrl}/api/settings?family_id=${FAMILY_ID}`);
-    const data: AppSettings = await res.json();
+    try {
+      const res = await fetch(`${backendUrl}/api/settings?family_id=${FAMILY_ID}`);
 
-    setTitle(data.dashboard_title || "כלכלת הבית");
-    setTitleDraft(data.dashboard_title || "כלכלת הבית");
+      if (!res.ok) {
+        console.error("loadSettings failed:", res.status, res.statusText);
+        setTitle("כלכלת הבית");
+        setTitleDraft("כלכלת הבית");
+        return;
+      }
+
+      const data = await res.json();
+
+      setTitle(
+        typeof data?.dashboard_title === "string" && data.dashboard_title.trim()
+          ? data.dashboard_title
+          : "כלכלת הבית"
+      );
+      setTitleDraft(
+        typeof data?.dashboard_title === "string" && data.dashboard_title.trim()
+          ? data.dashboard_title
+          : "כלכלת הבית"
+      );
+    } catch (error) {
+      console.error("loadSettings error:", error);
+      setTitle("כלכלת הבית");
+      setTitleDraft("כלכלת הבית");
+    }
   }
 
   async function saveTitle() {
-    await fetch(`${backendUrl}/api/settings/title?family_id=${FAMILY_ID}`, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        dashboard_title: titleDraft,
-      }),
-    });
+    try {
+      const res = await fetch(
+        `${backendUrl}/api/settings/title?family_id=${FAMILY_ID}`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            dashboard_title: titleDraft,
+          }),
+        }
+      );
 
-    setTitle(titleDraft || "כלכלת הבית");
-    setIsEditingTitle(false);
+      if (!res.ok) {
+        console.error("saveTitle failed:", res.status, res.statusText);
+        return;
+      }
+
+      setTitle(titleDraft || "כלכלת הבית");
+      setIsEditingTitle(false);
+    } catch (error) {
+      console.error("saveTitle error:", error);
+    }
   }
 
   async function loadMonths() {
-    const res = await fetch(`${backendUrl}/api/months?family_id=${FAMILY_ID}`);
-    const data = await res.json();
+    try {
+      const res = await fetch(`${backendUrl}/api/months?family_id=${FAMILY_ID}`);
 
-    setMonths(data);
+      if (!res.ok) {
+        console.error("loadMonths failed:", res.status, res.statusText);
+        setMonths([]);
+        return;
+      }
 
-    if (data.length > 0) {
-      setSelectedMonth(data[0]);
-      setNewMonth(data[0].month);
+      const data = await res.json();
+
+      if (!Array.isArray(data)) {
+        console.error("loadMonths expected array but got:", data);
+        setMonths([]);
+        return;
+      }
+
+      setMonths(data);
+
+      if (data.length > 0) {
+        setSelectedMonth(data[0]);
+        setNewMonth(data[0].month);
+      }
+    } catch (error) {
+      console.error("loadMonths error:", error);
+      setMonths([]);
     }
   }
 
   async function loadData(month: number, year: number) {
-    setLoading(true);
+    try {
+      setLoading(true);
 
-    const [summaryRes, txRes] = await Promise.all([
-      fetch(
-        `${backendUrl}/api/summary?month=${month}&year=${year}&family_id=${FAMILY_ID}`
-      ),
-      fetch(
-        `${backendUrl}/api/transactions?month=${month}&year=${year}&family_id=${FAMILY_ID}`
-      ),
-    ]);
+      const [summaryRes, txRes] = await Promise.all([
+        fetch(
+          `${backendUrl}/api/summary?month=${month}&year=${year}&family_id=${FAMILY_ID}`
+        ),
+        fetch(
+          `${backendUrl}/api/transactions?month=${month}&year=${year}&family_id=${FAMILY_ID}`
+        ),
+      ]);
 
-    const summaryData = await summaryRes.json();
-    const txData = await txRes.json();
+      let summaryData: Summary | null = null;
+      let txData: Transaction[] = [];
 
-    setSummary(summaryData);
-    setTransactions(txData);
-    setSelectedCategory(null);
-    setLoading(false);
+      if (summaryRes.ok) {
+        const json = await summaryRes.json();
+        summaryData = {
+          month: Number(json?.month ?? month),
+          year: Number(json?.year ?? year),
+          expenses_total: Number(json?.expenses_total ?? 0),
+          income_total: Number(json?.income_total ?? 0),
+          balance: Number(json?.balance ?? 0),
+          categories: Array.isArray(json?.categories) ? json.categories : [],
+        };
+      } else {
+        console.error("loadData summary failed:", summaryRes.status);
+        summaryData = {
+          month,
+          year,
+          expenses_total: 0,
+          income_total: 0,
+          balance: 0,
+          categories: [],
+        };
+      }
+
+      if (txRes.ok) {
+        const json = await txRes.json();
+        txData = Array.isArray(json) ? json : [];
+      } else {
+        console.error("loadData transactions failed:", txRes.status);
+        txData = [];
+      }
+
+      setSummary(summaryData);
+      setTransactions(txData);
+      setSelectedCategory(null);
+    } catch (error) {
+      console.error("loadData error:", error);
+      setSummary({
+        month,
+        year,
+        expenses_total: 0,
+        income_total: 0,
+        balance: 0,
+        categories: [],
+      });
+      setTransactions([]);
+      setSelectedCategory(null);
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function deleteTransaction(id: number) {
-    await fetch(`${backendUrl}/api/transactions/${id}`, {
-      method: "DELETE",
-    });
+    try {
+      const res = await fetch(`${backendUrl}/api/transactions/${id}`, {
+        method: "DELETE",
+      });
 
-    if (selectedMonth) {
-      loadData(selectedMonth.month, selectedMonth.year);
+      if (!res.ok) {
+        console.error("deleteTransaction failed:", res.status, res.statusText);
+        return;
+      }
+
+      if (selectedMonth) {
+        loadData(selectedMonth.month, selectedMonth.year);
+      }
+    } catch (error) {
+      console.error("deleteTransaction error:", error);
     }
   }
 
@@ -238,60 +345,75 @@ export default function HomePage() {
   async function saveEdit() {
     if (!editing || !selectedMonth) return;
 
-    await fetch(`${backendUrl}/api/transactions/${editing.id}`, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        description: editDescription,
-        amount: editAmount,
-        category: editCategory,
-        type: editType,
-        day: editDay,
-        month: editMonth,
-        year: selectedMonth.year,
-      }),
-    });
+    try {
+      const res = await fetch(`${backendUrl}/api/transactions/${editing.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          description: editDescription,
+          amount: editAmount,
+          category: editCategory,
+          type: editType,
+          day: editDay,
+          month: editMonth,
+          year: selectedMonth.year,
+        }),
+      });
 
-    setEditing(null);
+      if (!res.ok) {
+        console.error("saveEdit failed:", res.status, res.statusText);
+        return;
+      }
 
-    if (selectedMonth) {
+      setEditing(null);
       loadData(selectedMonth.month, selectedMonth.year);
       loadMonths();
+    } catch (error) {
+      console.error("saveEdit error:", error);
     }
   }
 
   async function createTransaction() {
     if (!selectedMonth) return;
 
-    await fetch(`${backendUrl}/api/transactions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        description: newDescription,
-        amount: newAmount,
-        category: newCategory,
-        type: newType,
-        day: newDay,
-        month: newMonth,
-        year: selectedMonth.year,
-        family_id: FAMILY_ID,
-      }),
-    });
+    try {
+      const res = await fetch(`${backendUrl}/api/transactions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          description: newDescription,
+          amount: newAmount,
+          category: newCategory,
+          type: newType,
+          day: newDay,
+          month: newMonth,
+          year: selectedMonth.year,
+          family_id: FAMILY_ID,
+        }),
+      });
 
-    setShowCreateModal(false);
-    setNewDescription("");
-    setNewAmount(0);
-    setNewCategory(categories[0]);
-    setNewType("expense");
-    setNewDay(1);
-    setNewMonth(selectedMonth.month);
+      if (!res.ok) {
+        console.error("createTransaction failed:", res.status, res.statusText);
+        return;
+      }
 
-    loadMonths();
-    loadData(selectedMonth.month, selectedMonth.year);
+      setShowCreateModal(false);
+      setNewDescription("");
+      setNewAmount(0);
+      setNewCategory(categories[0]);
+      setNewType("expense");
+      setNewDay(1);
+      setNewMonth(selectedMonth.month);
+
+      loadMonths();
+      loadData(selectedMonth.month, selectedMonth.year);
+    } catch (error) {
+      console.error("createTransaction error:", error);
+    }
   }
 
   function renderCustomLabel({
@@ -373,12 +495,13 @@ export default function HomePage() {
   }, [selectedMonth]);
 
   const chartData = useMemo(() => {
-    return summary?.categories ?? [];
+    return Array.isArray(summary?.categories) ? summary.categories : [];
   }, [summary]);
 
   const filteredTransactions = useMemo(() => {
-    if (!selectedCategory) return transactions;
-    return transactions.filter((tx) => tx.category === selectedCategory);
+    const safeTransactions = Array.isArray(transactions) ? transactions : [];
+    if (!selectedCategory) return safeTransactions;
+    return safeTransactions.filter((tx) => tx.category === selectedCategory);
   }, [transactions, selectedCategory]);
 
   return (
@@ -413,7 +536,7 @@ export default function HomePage() {
         </>
       )}
 
-      <div className="mx-auto max-w-md p-4 space-y-4">
+      <div className="mx-auto max-w-md space-y-4 p-4">
         <div className="flex items-center justify-between">
           <div className="w-10">
             {!isEditingTitle && (
@@ -463,7 +586,8 @@ export default function HomePage() {
           </label>
 
           <select
-            className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2 text-right text-base font-medium text-slate-700 shadow-sm focus:border-green-400 focus:outline-none focus:ring-2 focus:ring-green-100"            value={
+            className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2 text-right text-base font-medium text-slate-700 shadow-sm focus:border-green-400 focus:outline-none focus:ring-2 focus:ring-green-100"
+            value={
               selectedMonth
                 ? `${selectedMonth.month}-${selectedMonth.year}`
                 : ""
@@ -473,7 +597,7 @@ export default function HomePage() {
               setSelectedMonth({ month, year });
             }}
           >
-            {months.map((m) => (
+            {(Array.isArray(months) ? months : []).map((m) => (
               <option key={`${m.month}-${m.year}`} value={`${m.month}-${m.year}`}>
                 {m.month}/{m.year}
               </option>
@@ -501,7 +625,7 @@ export default function HomePage() {
           </div>
 
           <div className="h-80">
-            <ResponsiveContainer>
+            <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
                   data={chartData}
