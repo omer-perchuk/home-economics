@@ -29,3 +29,5 @@ node_modules/
 # docker / local data
 postgres_data/
 *.db
+
+apprunner-test/
