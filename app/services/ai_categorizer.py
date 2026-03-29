@@ -1,7 +1,8 @@
 import json
+import os
 from openai import OpenAI
 
-client = OpenAI()
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY")) if os.getenv("OPENAI_API_KEY") else None
 
 ALLOWED_CATEGORIES = [
     "סופר וקניות לבית",
@@ -51,6 +52,15 @@ def _normalize_result(data, original_text):
 
 
 def categorize_transaction_text(user_text):
+    if client is None:
+        return {
+            "description": user_text.strip(),
+            "amount": 0.0,
+            "type": "expense",
+            "category": "אחר",
+            "original_text": user_text,
+        }
+
     categories_text = ", ".join(ALLOWED_CATEGORIES)
 
     prompt = f"""
@@ -89,13 +99,10 @@ def categorize_transaction_text(user_text):
 - "rebar 35" → אוכל בחוץ וקפה
 - "yellow 20" → תחבורה
 - "קפה לנדוור 40" → אוכל בחוץ וקפה
-
 - "רמי לוי 200" → סופר וקניות לבית
 - "שופרסל 150" → סופר וקניות לבית
-
 - "גולף קידס 120" → ביגוד והנעלה
 - "זארה 300" → ביגוד והנעלה
-
 - "פז 300" → תחבורה
 
 טקסט המשתמש:

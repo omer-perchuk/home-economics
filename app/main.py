@@ -13,25 +13,22 @@ from app.routes.whatsapp import router as whatsapp_router
 from app.routes.dashboard_api import router as dashboard_api_router
 from app.routes.settings_api import router as settings_api_router
 
-
-# יצירת הטבלאות במסד הנתונים
-Base.metadata.create_all(bind=engine)
-
 app = FastAPI()
 
 
+@app.on_event("startup")
+def startup():
+    Base.metadata.create_all(bind=engine)
 
-# CORS (מאפשר לפרונטאנד לגשת ל-API)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # זמנית לפיתוח
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-
-# Routers
 app.include_router(whatsapp_router)
 app.include_router(dashboard_api_router)
 app.include_router(settings_api_router)
@@ -90,6 +87,7 @@ def get_transactions(db: Session = Depends(get_db)):
 def category_report(db: Session = Depends(get_db)):
     return get_category_summary(db)
 
+
 @app.get("/debug/families")
 def debug_families(db: Session = Depends(get_db)):
     from app.db.models import Family, User
@@ -114,6 +112,7 @@ def debug_families(db: Session = Depends(get_db)):
         })
 
     return result
+
 
 @app.get("/debug/fix-transaction-families")
 def fix_transaction_families(db: Session = Depends(get_db)):
