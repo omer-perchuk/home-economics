@@ -1,9 +1,9 @@
 import os
+import httpx
 
-from fastapi import APIRouter, Request, Depends, BackgroundTasks
-from fastapi.responses import Response
+from fastapi import APIRouter, Request, Depends, BackgroundTasks, HTTPException
+from fastapi.responses import Response, PlainTextResponse
 from sqlalchemy.orm import Session
-from twilio.rest import Client
 
 from app.db.database import get_db
 from app.db.models import Transaction
@@ -33,32 +33,87 @@ from app.services.whatsapp_format_service import (
 
 router = APIRouter()
 
-DASHBOARD_URL = "https://home-economics-flax.vercel.app"
+DASHBOARD_URL = "https://aws-migration-test.d11fqx2zyfwk68.amplifyapp.com"
 
-TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "")
-TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "")
-TWILIO_WHATSAPP_NUMBER = os.getenv("TWILIO_WHATSAPP_NUMBER", "whatsapp:+14155238886")
+META_ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN", "")
+META_VERIFY_TOKEN = os.getenv("META_VERIFY_TOKEN", "")
+META_PHONE_NUMBER_ID = os.getenv("META_PHONE_NUMBER_ID", "")
 
 
-def send_whatsapp_message(to_number: str, message: str) -> None:
-    if not TWILIO_ACCOUNT_SID or not TWILIO_AUTH_TOKEN:
-        print("Twilio credentials are missing. Message was not sent.")
+def normalize_phone_for_db(phone: str) -> str:
+    """
+    Meta usually sends phone numbers like: 9725XXXXXXXX
+    We normalize to whatsapp:+9725XXXXXXXX so it stays compatible
+    with your existing family lookup logic.
+    """
+    digits = "".join(ch for ch in phone if ch.isdigit())
+    if not digits:
+        return phone
+
+    if digits.startswith("0"):
+        digits = "972" + digits[1:]
+
+    if not digits.startswith("972"):
+        return f"whatsapp:+{digits}"
+
+    return f"whatsapp:+{digits}"
+
+
+async def send_whatsapp_message(to_number: str, message: str) -> None:
+    """
+    Send WhatsApp message via Meta Cloud API.
+    Expects to_number in one of:
+    - whatsapp:+9725XXXXXXXX
+    - +9725XXXXXXXX
+    - 9725XXXXXXXX
+    """
+    if not META_ACCESS_TOKEN or not META_PHONE_NUMBER_ID:
+        print("Meta credentials are missing. Message was not sent.")
         return
 
+    digits = "".join(ch for ch in to_number if ch.isdigit())
+    if not digits:
+        print(f"Invalid destination number: {to_number}")
+        return
+
+    url = f"https://graph.facebook.com/v22.0/{META_PHONE_NUMBER_ID}/messages"
+    headers = {
+        "Authorization": f"Bearer {META_ACCESS_TOKEN}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": digits,
+        "type": "text",
+        "text": {"body": message},
+    }
+
     try:
-        client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
-        client.messages.create(
-            from_=TWILIO_WHATSAPP_NUMBER,
-            to=to_number,
-            body=message,
-        )
-        print(f"Sent WhatsApp reply to {to_number}: {message}")
+        async with httpx.AsyncClient(timeout=20) as client:
+            response = await client.post(url, headers=headers, json=payload)
+            response.raise_for_status()
+        print(f"Sent WhatsApp reply to {digits}: {message}")
     except Exception as e:
-        print(f"Failed to send WhatsApp reply to {to_number}: {e}")
+        print(f"Failed to send WhatsApp reply to {digits}: {e}")
 
 
 def build_empty_ok_response() -> Response:
     return Response(status_code=200, content="")
+
+
+@router.get("/webhook/whatsapp")
+async def verify_whatsapp_webhook(request: Request):
+    """
+    Meta webhook verification endpoint.
+    """
+    mode = request.query_params.get("hub.mode")
+    token = request.query_params.get("hub.verify_token")
+    challenge = request.query_params.get("hub.challenge")
+
+    if mode == "subscribe" and token == META_VERIFY_TOKEN:
+        return PlainTextResponse(content=challenge or "", status_code=200)
+
+    raise HTTPException(status_code=403, detail="Verification failed")
 
 
 @router.post("/webhook/whatsapp")
@@ -67,11 +122,36 @@ async def whatsapp_webhook(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
-    form = await request.form()
+    """
+    Meta incoming webhook endpoint.
+    """
+    body = await request.json()
+    print("Incoming Meta webhook:", body)
 
-    raw_message = form.get("Body", "").strip()
-    message = raw_message.lower()
-    sender = form.get("From", "")
+    try:
+        entry = body["entry"][0]
+        changes = entry["changes"][0]
+        value = changes["value"]
+
+        messages = value.get("messages", [])
+        if not messages:
+            return build_empty_ok_response()
+
+        message_data = messages[0]
+
+        # Ignore statuses and non-text messages for now
+        if message_data.get("type") != "text":
+            return build_empty_ok_response()
+
+        raw_message = message_data["text"]["body"].strip()
+        message = raw_message.lower()
+
+        sender_raw = message_data.get("from", "")
+        sender = normalize_phone_for_db(sender_raw)
+
+    except Exception as e:
+        print(f"Failed to parse Meta webhook: {e}")
+        return build_empty_ok_response()
 
     user, family = get_user_and_family_by_phone(db, sender)
 
