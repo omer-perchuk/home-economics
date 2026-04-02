@@ -6,13 +6,22 @@ from fastapi.responses import Response, PlainTextResponse
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
-from app.db.models import Transaction
+from app.db.models import Transaction, User
 from app.services.ai_categorizer import categorize_transaction_text
 from app.services.report_service import (
     get_current_month_transactions,
     get_month_summary,
     parse_month_input,
     delete_transaction_by_id,
+)
+from app.services.onboarding_service import (
+    get_or_create_user_by_phone,
+    create_family_for_user,
+    find_admin_by_phone,
+    create_join_request,
+    get_pending_join_request_for_admin,
+    approve_join_request,
+    reject_join_request,
 )
 from app.services.state_service import (
     set_user_state,
@@ -55,7 +64,18 @@ def normalize_phone_for_db(phone: str) -> str:
 
     return f"whatsapp:+{digits}"
 
+def normalize_admin_phone_input(phone: str) -> str:
+    digits = "".join(ch for ch in phone if ch.isdigit())
+    if not digits:
+        return phone
 
+    if digits.startswith("0"):
+        digits = "972" + digits[1:]
+
+    if not digits.startswith("972"):
+        digits = f"972{digits}"
+
+    return f"whatsapp:+{digits}"
 async def send_whatsapp_message(to_number: str, message: str) -> None:
     if not META_ACCESS_TOKEN or not META_PHONE_NUMBER_ID:
         print("Meta credentials are missing. Message was not sent.")
@@ -156,21 +176,187 @@ async def whatsapp_webhook(
         print(f"Failed to parse Meta webhook: {e}")
         return build_empty_ok_response()
 
-    user, family = get_user_and_family_by_phone(db, sender)
+    user = get_or_create_user_by_phone(db, sender)
+    family = None
+
+    if user.family_id:
+        user, family = get_user_and_family_by_phone(db, sender)
 
     print("=== USER FOUND ===", user)
     print("=== FAMILY FOUND ===", family)
 
-    if not user or not family:
+    user_state = get_user_state(sender)
+    command = detect_command(message)
+
+    # ===============================
+    # אישור / דחייה על ידי מנהל
+    # ===============================
+    if message.startswith("אשר "):
+        request_id_text = message.replace("אשר", "", 1).strip()
+
+        if not request_id_text.isdigit():
+            return build_empty_ok_response()
+
+        request_id_text = message.replace("אשר", "", 1).strip()
+        if not request_id_text.isdigit():
+            background_tasks.add_task(
+                send_whatsapp_message,
+                sender,
+                "שלח: אשר <מספר בקשה>"
+            )
+            return build_empty_ok_response()
+
+        join_request = get_pending_join_request_for_admin(db, int(request_id_text), user.id)
+        if not join_request:
+            background_tasks.add_task(
+                send_whatsapp_message,
+                sender,
+                "לא נמצאה בקשה ממתינה."
+            )
+            return build_empty_ok_response()
+
+        requester = approve_join_request(db, join_request)
+
         background_tasks.add_task(
             send_whatsapp_message,
             sender,
-            "המספר שלך לא רשום במערכת. צריך להוסיף אותך קודם בקובץ המשפחות."
+            f"✅ הבקשה {join_request.id} אושרה."
         )
+
+        if requester:
+            background_tasks.add_task(
+                send_whatsapp_message,
+                requester.phone,
+                "✅ הבקשה שלך אושרה! צורפת למשפחה."
+            )
+
         return build_empty_ok_response()
 
-    user_state = get_user_state(sender)
-    command = detect_command(message)
+    if message.startswith("דחה "):
+        if not user.is_admin or not user.family_id:
+            background_tasks.add_task(
+                send_whatsapp_message,
+                sender,
+                "רק מנהל משפחה יכול לדחות בקשות."
+            )
+            return build_empty_ok_response()
+
+        request_id_text = message.replace("דחה", "", 1).strip()
+        if not request_id_text.isdigit():
+            background_tasks.add_task(
+                send_whatsapp_message,
+                sender,
+                "שלח: דחה <מספר בקשה>"
+            )
+            return build_empty_ok_response()
+
+        join_request = get_pending_join_request_for_admin(db, int(request_id_text), user.id)
+        if not join_request:
+            background_tasks.add_task(
+                send_whatsapp_message,
+                sender,
+                "לא נמצאה בקשה ממתינה."
+            )
+            return build_empty_ok_response()
+
+        reject_join_request(db, join_request)
+
+        background_tasks.add_task(
+            send_whatsapp_message,
+            sender,
+            f"❌ הבקשה {join_request.id} נדחתה."
+        )
+
+        requester_user = db.query(User).filter(User.id == join_request.requester_user_id).first()
+        if requester_user:
+            background_tasks.add_task(
+                send_whatsapp_message,
+                requester_user.phone,
+                "❌ הבקשה שלך להצטרף למשפחה נדחתה."
+            )
+
+        return build_empty_ok_response()
+
+    # ===============================
+    # onboarding
+    # ===============================
+    if not user.family_id :
+
+        if user_state and user_state.get("action") == "create_family_name":
+            family_name = raw_message.strip()
+            family = create_family_for_user(db, user, family_name)
+            clear_user_state(sender)
+
+            background_tasks.add_task(
+                send_whatsapp_message,
+                sender,
+                f"✅ המשפחה '{family.name}' נפתחה בהצלחה.\nאתה מנהל המשפחה."
+            )
+            return build_empty_ok_response()
+
+        if user_state and user_state.get("action") == "join_family_admin_phone":
+            admin_phone = normalize_admin_phone_input(raw_message)
+            admin_user = find_admin_by_phone(db, admin_phone)
+
+            if not admin_user:
+                background_tasks.add_task(
+                    send_whatsapp_message,
+                    sender,
+                    "לא נמצא מנהל עם המספר הזה."
+                )
+                return build_empty_ok_response()
+
+            if admin_user.phone == user.phone:  # ✅ חשוב
+                background_tasks.add_task(
+                    send_whatsapp_message,
+                    sender,
+                    "אי אפשר לשלוח בקשה לעצמך."
+                )
+                return build_empty_ok_response()
+
+            join_request = create_join_request(db, user, admin_user)
+            clear_user_state(sender)
+
+            background_tasks.add_task(
+                send_whatsapp_message,
+                sender,
+                "📨 בקשה נשלחה למנהל. מחכה לאישור."
+            )
+
+            background_tasks.add_task(
+                send_whatsapp_message,
+                admin_user.phone,
+                f"👤 בקשה חדשה\n{user.phone}\nאשר {join_request.id} / דחה {join_request.id}"
+            )
+
+            return build_empty_ok_response()
+
+        if user_state and user_state.get("action") == "onboarding_choice":
+            if message == "1":
+                set_user_state(sender, {"action": "create_family_name"})
+                background_tasks.add_task(
+                    send_whatsapp_message,
+                    sender,
+                    "מה שם המשפחה?"
+                )
+                return build_empty_ok_response()
+
+            if message == "2":
+                set_user_state(sender, {"action": "join_family_admin_phone"})
+                background_tasks.add_task(
+                    send_whatsapp_message,
+                    sender,
+                    "📱 שלח מספר טלפון של מנהל (למשל: 0501234567)"
+                )
+                return build_empty_ok_response()
+
+        set_user_state(sender, {"action": "onboarding_choice"})
+        background_tasks.add_task(
+            send_whatsapp_message,
+            sender,
+            "ברוך הבא 👋\n1 לפתוח משפחה\n2 להצטרף"
+        )
+        return build_empty_ok_response()
 
     if user_state and user_state.get("action") == "delete_select":
         transaction_ids = user_state.get("transaction_ids", [])
@@ -427,29 +613,31 @@ async def whatsapp_webhook(
         )
         return build_empty_ok_response()
 
-    ai_result = categorize_transaction_text(raw_message)
+        # --- הכל נשאר כמו אצלך עד הבלוק האחרון ---
 
-    if ai_result["amount"] > 0:
-        transaction = Transaction(
-            original_text=ai_result["original_text"],
-            description=ai_result["description"],
-            amount=ai_result["amount"],
-            type=ai_result["type"],
-            category=ai_result["category"],
-            family_id=family.id,
-            user_id=user.id,
-            user_phone=user.phone,
-        )
+        ai_result = categorize_transaction_text(raw_message)
 
-        db.add(transaction)
-        db.commit()
+        if ai_result["amount"] > 0:
+            transaction = Transaction(
+                original_text=ai_result["original_text"],
+                description=ai_result["description"],
+                amount=ai_result["amount"],
+                type=ai_result["type"],
+                category=ai_result["category"],
+                family_id=family.id,
+                user_id=user.id,
+                user_phone=user.phone,  # ✅ תיקון קריטי
+            )
 
-        background_tasks.add_task(
-            send_whatsapp_message,
-            sender,
-            format_added_transaction_message(ai_result)
-        )
-        return build_empty_ok_response()
+            db.add(transaction)
+            db.commit()
+
+            background_tasks.add_task(
+                send_whatsapp_message,
+                sender,
+                format_added_transaction_message(ai_result)
+            )
+            return build_empty_ok_response()
 
     background_tasks.add_task(
         send_whatsapp_message,

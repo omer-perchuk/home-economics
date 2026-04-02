@@ -1,8 +1,5 @@
-# app/db/models.py
-
+from sqlalchemy import Column, Integer, String, ForeignKey, Boolean, DateTime, Float
 from datetime import datetime
-
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 
 from app.db.database import Base
@@ -13,12 +10,12 @@ class Family(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False, unique=True)
-    twilio_whatsapp_number = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     dashboard_title = Column(String, nullable=False, default="כלכלת הבית")
 
     users = relationship("User", back_populates="family", cascade="all, delete-orphan")
     transactions = relationship("Transaction", back_populates="family", cascade="all, delete-orphan")
+
 
 class User(Base):
     __tablename__ = "users"
@@ -26,7 +23,12 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
     phone = Column(String, nullable=False, unique=True, index=True)
-    family_id = Column(Integer, ForeignKey("families.id"), nullable=False)
+
+    family_id = Column(Integer, ForeignKey("families.id"), nullable=True)
+
+    is_admin = Column(Boolean, default=False, nullable=False)
+    is_approved = Column(Boolean, default=False, nullable=False)
+
     created_at = Column(DateTime, default=datetime.utcnow)
 
     family = relationship("Family", back_populates="users")
@@ -40,7 +42,7 @@ class Transaction(Base):
     original_text = Column(String, nullable=True)
     description = Column(String, nullable=False)
     amount = Column(Float, nullable=False)
-    type = Column(String, nullable=False)  # expense / income
+    type = Column(String, nullable=False)
     category = Column(String, nullable=False)
 
     family_id = Column(Integer, ForeignKey("families.id"), nullable=False, index=True)
@@ -51,3 +53,15 @@ class Transaction(Base):
 
     family = relationship("Family", back_populates="transactions")
     user = relationship("User", back_populates="transactions")
+
+
+class JoinRequest(Base):
+    __tablename__ = "join_requests"
+
+    id = Column(Integer, primary_key=True, index=True)
+    requester_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    requester_phone = Column(String, nullable=False)
+    admin_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    family_id = Column(Integer, ForeignKey("families.id"), nullable=False)
+    status = Column(String, default="pending", nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
