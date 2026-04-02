@@ -31,6 +31,8 @@ from app.services.whatsapp_format_service import (
     format_short_amount,
 )
 
+print("=== WHATSAPP ROUTE LOADED ===")
+
 router = APIRouter()
 
 DASHBOARD_URL = "https://aws-migration-test.d11fqx2zyfwk68.amplifyapp.com"
@@ -41,11 +43,6 @@ META_PHONE_NUMBER_ID = os.getenv("META_PHONE_NUMBER_ID", "")
 
 
 def normalize_phone_for_db(phone: str) -> str:
-    """
-    Meta usually sends phone numbers like: 9725XXXXXXXX
-    We normalize to whatsapp:+9725XXXXXXXX so it stays compatible
-    with your existing family lookup logic.
-    """
     digits = "".join(ch for ch in phone if ch.isdigit())
     if not digits:
         return phone
@@ -54,19 +51,12 @@ def normalize_phone_for_db(phone: str) -> str:
         digits = "972" + digits[1:]
 
     if not digits.startswith("972"):
-        return f"whatsapp:+{digits}"
+        digits = f"972{digits}"
 
     return f"whatsapp:+{digits}"
 
 
 async def send_whatsapp_message(to_number: str, message: str) -> None:
-    """
-    Send WhatsApp message via Meta Cloud API.
-    Expects to_number in one of:
-    - whatsapp:+9725XXXXXXXX
-    - +9725XXXXXXXX
-    - 9725XXXXXXXX
-    """
     if not META_ACCESS_TOKEN or not META_PHONE_NUMBER_ID:
         print("Meta credentials are missing. Message was not sent.")
         return
@@ -91,6 +81,8 @@ async def send_whatsapp_message(to_number: str, message: str) -> None:
     try:
         async with httpx.AsyncClient(timeout=20) as client:
             response = await client.post(url, headers=headers, json=payload)
+            print("=== META SEND STATUS ===", response.status_code)
+            print("=== META SEND BODY ===", response.text)
             response.raise_for_status()
         print(f"Sent WhatsApp reply to {digits}: {message}")
     except Exception as e:
@@ -101,14 +93,21 @@ def build_empty_ok_response() -> Response:
     return Response(status_code=200, content="")
 
 
+@router.get("/debug/webhook-test")
+async def debug_webhook_test():
+    return {"ok": True, "route": "whatsapp webhook file loaded"}
+
+
 @router.get("/webhook/whatsapp")
 async def verify_whatsapp_webhook(request: Request):
-    """
-    Meta webhook verification endpoint.
-    """
     mode = request.query_params.get("hub.mode")
     token = request.query_params.get("hub.verify_token")
     challenge = request.query_params.get("hub.challenge")
+
+    print("=== VERIFY WEBHOOK HIT ===")
+    print("=== MODE ===", mode)
+    print("=== TOKEN ===", token)
+    print("=== EXPECTED TOKEN ===", META_VERIFY_TOKEN)
 
     if mode == "subscribe" and token == META_VERIFY_TOKEN:
         return PlainTextResponse(content=challenge or "", status_code=200)
@@ -122,11 +121,10 @@ async def whatsapp_webhook(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
-    """
-    Meta incoming webhook endpoint.
-    """
+    print("=== POST /webhook/whatsapp HIT ===")
+
     body = await request.json()
-    print("Incoming Meta webhook:", body)
+    print("=== INCOMING META WEBHOOK ===", body)
 
     try:
         entry = body["entry"][0]
@@ -135,12 +133,13 @@ async def whatsapp_webhook(
 
         messages = value.get("messages", [])
         if not messages:
+            print("=== NO MESSAGES IN WEBHOOK ===")
             return build_empty_ok_response()
 
         message_data = messages[0]
 
-        # Ignore statuses and non-text messages for now
         if message_data.get("type") != "text":
+            print("=== NON-TEXT MESSAGE IGNORED ===", message_data.get("type"))
             return build_empty_ok_response()
 
         raw_message = message_data["text"]["body"].strip()
@@ -149,11 +148,18 @@ async def whatsapp_webhook(
         sender_raw = message_data.get("from", "")
         sender = normalize_phone_for_db(sender_raw)
 
+        print("=== RAW MESSAGE ===", raw_message)
+        print("=== SENDER RAW ===", sender_raw)
+        print("=== SENDER NORMALIZED ===", sender)
+
     except Exception as e:
         print(f"Failed to parse Meta webhook: {e}")
         return build_empty_ok_response()
 
     user, family = get_user_and_family_by_phone(db, sender)
+
+    print("=== USER FOUND ===", user)
+    print("=== FAMILY FOUND ===", family)
 
     if not user or not family:
         background_tasks.add_task(
@@ -163,14 +169,9 @@ async def whatsapp_webhook(
         )
         return build_empty_ok_response()
 
-    print("Incoming message:", raw_message)
-
     user_state = get_user_state(sender)
     command = detect_command(message)
 
-    # ===============================
-    # מחיקה - בחירת מספרים
-    # ===============================
     if user_state and user_state.get("action") == "delete_select":
         transaction_ids = user_state.get("transaction_ids", [])
 
@@ -210,9 +211,6 @@ async def whatsapp_webhook(
         )
         return build_empty_ok_response()
 
-    # ===============================
-    # סיכום - מחכים לחודש
-    # ===============================
     if user_state and user_state.get("action") == "awaiting_summary_month":
         parsed_month = parse_month_input(message)
 
@@ -241,9 +239,6 @@ async def whatsapp_webhook(
         )
         return build_empty_ok_response()
 
-    # ===============================
-    # עדכון - בחירת רשומה
-    # ===============================
     if user_state and user_state.get("action") == "update_select":
         if not message.isdigit():
             background_tasks.add_task(
@@ -281,9 +276,6 @@ async def whatsapp_webhook(
         )
         return build_empty_ok_response()
 
-    # ===============================
-    # עדכון - קבלת ערך חדש
-    # ===============================
     if user_state and user_state.get("action") == "update_new_value":
         transaction_id = user_state.get("transaction_id")
 
@@ -329,9 +321,6 @@ async def whatsapp_webhook(
         )
         return build_empty_ok_response()
 
-    # ===============================
-    # פקודת מחיקה
-    # ===============================
     if command == "delete":
         transactions = get_current_month_transactions(db, family.id)
 
@@ -365,9 +354,6 @@ async def whatsapp_webhook(
         )
         return build_empty_ok_response()
 
-    # ===============================
-    # פקודת עדכון
-    # ===============================
     if command == "update":
         transactions = get_current_month_transactions(db, family.id)
         if not transactions:
@@ -397,9 +383,6 @@ async def whatsapp_webhook(
         )
         return build_empty_ok_response()
 
-    # ===============================
-    # רשימת רשומות חודש נוכחי
-    # ===============================
     if command == "list":
         transactions = get_current_month_transactions(db, family.id)
         formatted = format_transactions_for_whatsapp_short(transactions)
@@ -414,9 +397,6 @@ async def whatsapp_webhook(
         )
         return build_empty_ok_response()
 
-    # ===============================
-    # פקודת סיכום
-    # ===============================
     if command == "summary":
         set_user_state(
             sender,
@@ -430,9 +410,6 @@ async def whatsapp_webhook(
         )
         return build_empty_ok_response()
 
-    # ===============================
-    # פקודת אתר
-    # ===============================
     if command == "site":
         background_tasks.add_task(
             send_whatsapp_message,
@@ -442,9 +419,6 @@ async def whatsapp_webhook(
         )
         return build_empty_ok_response()
 
-    # ===============================
-    # פקודת עזרה
-    # ===============================
     if command == "help":
         background_tasks.add_task(
             send_whatsapp_message,
@@ -453,9 +427,6 @@ async def whatsapp_webhook(
         )
         return build_empty_ok_response()
 
-    # ===============================
-    # הוספת הוצאה / הכנסה
-    # ===============================
     ai_result = categorize_transaction_text(raw_message)
 
     if ai_result["amount"] > 0:
@@ -480,9 +451,6 @@ async def whatsapp_webhook(
         )
         return build_empty_ok_response()
 
-    # ===============================
-    # אם לא הבין
-    # ===============================
     background_tasks.add_task(
         send_whatsapp_message,
         sender,
