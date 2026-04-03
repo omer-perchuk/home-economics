@@ -8,10 +8,15 @@ from app.services.report_service import get_category_summary
 
 from app.db.database import Base, engine, get_db
 from app.db.models import Transaction
+from app.db.login_token import LoginToken
+from app.db.user_session import UserSession
 
 from app.routes.whatsapp import router as whatsapp_router
 from app.routes.dashboard_api import router as dashboard_api_router
 from app.routes.settings_api import router as settings_api_router
+from app.routes.auth_api import router as auth_api_router
+
+from app.utils.session_auth import get_current_session
 
 app = FastAPI()
 
@@ -32,7 +37,7 @@ app.add_middleware(
 app.include_router(whatsapp_router)
 app.include_router(dashboard_api_router)
 app.include_router(settings_api_router)
-
+app.include_router(auth_api_router)
 
 class ExpenseInput(BaseModel):
     text: str
@@ -66,8 +71,16 @@ def parse_expense(data: ExpenseInput, db: Session = Depends(get_db)):
 
 
 @app.get("/transactions")
-def get_transactions(db: Session = Depends(get_db)):
-    transactions = db.query(Transaction).order_by(Transaction.id.desc()).all()
+def get_transactions(
+    session = Depends(get_current_session),
+    db: Session = Depends(get_db)
+):
+    transactions = (
+        db.query(Transaction)
+        .filter(Transaction.family_id == session.family_id)
+        .order_by(Transaction.id.desc())
+        .all()
+    )
 
     return [
         {
@@ -82,11 +95,23 @@ def get_transactions(db: Session = Depends(get_db)):
         for t in transactions
     ]
 
-
 @app.get("/report/categories")
-def category_report(db: Session = Depends(get_db)):
-    return get_category_summary(db)
+def category_report(
+    session = Depends(get_current_session),
+    db: Session = Depends(get_db)
+):
+    transactions = (
+        db.query(Transaction)
+        .filter(Transaction.family_id == session.family_id)
+        .all()
+    )
 
+    summary = {}
+
+    for t in transactions:
+        summary[t.category] = summary.get(t.category, 0) + t.amount
+
+    return summary
 
 @app.get("/debug/families")
 def debug_families(db: Session = Depends(get_db)):
@@ -137,3 +162,10 @@ def fix_transaction_families(db: Session = Depends(get_db)):
     db.commit()
 
     return {"updated_transactions": updated}
+
+@app.get("/api/me")
+def get_me(session = Depends(get_current_session)):
+    return {
+        "user_id": session.user_id,
+        "family_id": session.family_id
+    }

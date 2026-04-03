@@ -613,32 +613,36 @@ async def whatsapp_webhook(
         )
         return build_empty_ok_response()
 
-        # --- הכל נשאר כמו אצלך עד הבלוק האחרון ---
+    # ===============================
+    # הוספת רשומה (AI)
+    # ===============================
+    ai_result = categorize_transaction_text(raw_message)
 
-        ai_result = categorize_transaction_text(raw_message)
+    if ai_result["amount"] > 0:
+        transaction = Transaction(
+            original_text=ai_result["original_text"],
+            description=ai_result["description"],
+            amount=ai_result["amount"],
+            type=ai_result["type"],
+            category=ai_result["category"],
+            family_id=family.id,
+            user_id=user.id,
+            user_phone=user.phone,
+        )
 
-        if ai_result["amount"] > 0:
-            transaction = Transaction(
-                original_text=ai_result["original_text"],
-                description=ai_result["description"],
-                amount=ai_result["amount"],
-                type=ai_result["type"],
-                category=ai_result["category"],
-                family_id=family.id,
-                user_id=user.id,
-                user_phone=user.phone,  # ✅ תיקון קריטי
-            )
+        db.add(transaction)
+        db.commit()
 
-            db.add(transaction)
-            db.commit()
+        background_tasks.add_task(
+            send_whatsapp_message,
+            sender,
+            format_added_transaction_message(ai_result)
+        )
+        return build_empty_ok_response()
 
-            background_tasks.add_task(
-                send_whatsapp_message,
-                sender,
-                format_added_transaction_message(ai_result)
-            )
-            return build_empty_ok_response()
-
+    # ===============================
+    # fallback
+    # ===============================
     background_tasks.add_task(
         send_whatsapp_message,
         sender,

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
 import {
   Pencil,
@@ -43,10 +44,6 @@ type Transaction = {
   type: string;
 };
 
-type AppSettings = {
-  dashboard_title: string;
-};
-
 type PieLabelProps = {
   cx?: number;
   cy?: number;
@@ -62,6 +59,11 @@ type PieClickData = {
   payload?: {
     category?: string;
   };
+};
+
+type MeResponse = {
+  user_id: number;
+  family_id: number;
 };
 
 const RADIAN = Math.PI / 180;
@@ -115,19 +117,14 @@ function getDaysInMonth(month: number, year: number) {
 }
 
 export default function HomePage() {
-  console.log("categories:", categories);
-
-  const FAMILY_ID =
-    typeof window !== "undefined"
-      ? Number(
-          new URLSearchParams(window.location.search).get("family_id") || "1"
-        )
-      : 1;
+  const router = useRouter();
 
   const backendUrl =
     process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
   const [menuOpen, setMenuOpen] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
 
   const [months, setMonths] = useState<MonthOption[]>([]);
   const [selectedMonth, setSelectedMonth] = useState<MonthOption | null>(null);
@@ -158,9 +155,50 @@ export default function HomePage() {
 
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
+  async function fetchWithAuth(input: string, init?: RequestInit) {
+    const res = await fetch(input, {
+      ...init,
+      credentials: "include",
+    });
+
+    if (res.status === 401) {
+      router.replace("/auth");
+      throw new Error("Not authenticated");
+    }
+
+    return res;
+  }
+
+  async function checkSession() {
+    try {
+      const res = await fetch(`${backendUrl}/api/me`, {
+        credentials: "include",
+      });
+
+      if (!res.ok) {
+        router.replace("/auth");
+        return;
+      }
+
+      const data: MeResponse = await res.json();
+
+      if (!data?.user_id || !data?.family_id) {
+        router.replace("/auth");
+        return;
+      }
+
+      setIsAuthenticated(true);
+    } catch (error) {
+      console.error("checkSession error:", error);
+      router.replace("/auth");
+    } finally {
+      setAuthChecked(true);
+    }
+  }
+
   async function loadSettings() {
     try {
-      const res = await fetch(`${backendUrl}/api/settings?family_id=${FAMILY_ID}`);
+      const res = await fetchWithAuth(`${backendUrl}/api/settings`);
 
       if (!res.ok) {
         console.error("loadSettings failed:", res.status, res.statusText);
@@ -190,18 +228,15 @@ export default function HomePage() {
 
   async function saveTitle() {
     try {
-      const res = await fetch(
-        `${backendUrl}/api/settings/title?family_id=${FAMILY_ID}`,
-        {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            dashboard_title: titleDraft,
-          }),
-        }
-      );
+      const res = await fetchWithAuth(`${backendUrl}/api/settings/title`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          dashboard_title: titleDraft,
+        }),
+      });
 
       if (!res.ok) {
         console.error("saveTitle failed:", res.status, res.statusText);
@@ -217,7 +252,7 @@ export default function HomePage() {
 
   async function loadMonths() {
     try {
-      const res = await fetch(`${backendUrl}/api/months?family_id=${FAMILY_ID}`);
+      const res = await fetchWithAuth(`${backendUrl}/api/months`);
 
       if (!res.ok) {
         console.error("loadMonths failed:", res.status, res.statusText);
@@ -236,7 +271,7 @@ export default function HomePage() {
       setMonths(data);
 
       if (data.length > 0) {
-        setSelectedMonth(data[0]);
+        setSelectedMonth((prev) => prev ?? data[0]);
         setNewMonth(data[0].month);
       }
     } catch (error) {
@@ -250,11 +285,9 @@ export default function HomePage() {
       setLoading(true);
 
       const [summaryRes, txRes] = await Promise.all([
-        fetch(
-          `${backendUrl}/api/summary?month=${month}&year=${year}&family_id=${FAMILY_ID}`
-        ),
-        fetch(
-          `${backendUrl}/api/transactions?month=${month}&year=${year}&family_id=${FAMILY_ID}`
+        fetchWithAuth(`${backendUrl}/api/summary?month=${month}&year=${year}`),
+        fetchWithAuth(
+          `${backendUrl}/api/transactions?month=${month}&year=${year}`
         ),
       ]);
 
@@ -313,7 +346,7 @@ export default function HomePage() {
 
   async function deleteTransaction(id: number) {
     try {
-      const res = await fetch(`${backendUrl}/api/transactions/${id}`, {
+      const res = await fetchWithAuth(`${backendUrl}/api/transactions/${id}`, {
         method: "DELETE",
       });
 
@@ -346,21 +379,24 @@ export default function HomePage() {
     if (!editing || !selectedMonth) return;
 
     try {
-      const res = await fetch(`${backendUrl}/api/transactions/${editing.id}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          description: editDescription,
-          amount: editAmount,
-          category: editCategory,
-          type: editType,
-          day: editDay,
-          month: editMonth,
-          year: selectedMonth.year,
-        }),
-      });
+      const res = await fetchWithAuth(
+        `${backendUrl}/api/transactions/${editing.id}`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            description: editDescription,
+            amount: editAmount,
+            category: editCategory,
+            type: editType,
+            day: editDay,
+            month: editMonth,
+            year: selectedMonth.year,
+          }),
+        }
+      );
 
       if (!res.ok) {
         console.error("saveEdit failed:", res.status, res.statusText);
@@ -379,7 +415,7 @@ export default function HomePage() {
     if (!selectedMonth) return;
 
     try {
-      const res = await fetch(`${backendUrl}/api/transactions`, {
+      const res = await fetchWithAuth(`${backendUrl}/api/transactions`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -392,7 +428,6 @@ export default function HomePage() {
           day: newDay,
           month: newMonth,
           year: selectedMonth.year,
-          family_id: FAMILY_ID,
         }),
       });
 
@@ -483,16 +518,22 @@ export default function HomePage() {
   }
 
   useEffect(() => {
-    loadMonths();
-    loadSettings();
+    checkSession();
   }, []);
 
   useEffect(() => {
-    if (selectedMonth) {
+    if (!isAuthenticated) return;
+
+    loadMonths();
+    loadSettings();
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (selectedMonth && isAuthenticated) {
       loadData(selectedMonth.month, selectedMonth.year);
       setNewMonth(selectedMonth.month);
     }
-  }, [selectedMonth]);
+  }, [selectedMonth, isAuthenticated]);
 
   const chartData = useMemo(() => {
     return Array.isArray(summary?.categories) ? summary.categories : [];
@@ -503,6 +544,14 @@ export default function HomePage() {
     if (!selectedCategory) return safeTransactions;
     return safeTransactions.filter((tx) => tx.category === selectedCategory);
   }, [transactions, selectedCategory]);
+
+  if (!authChecked || !isAuthenticated) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-gradient-to-b from-green-50 via-emerald-50 to-lime-50 text-slate-900">
+        <div className="text-lg font-medium">טוען...</div>
+      </main>
+    );
+  }
 
   return (
     <main className="relative min-h-screen bg-gradient-to-b from-green-50 via-emerald-50 to-lime-50 text-slate-900">
@@ -516,7 +565,7 @@ export default function HomePage() {
             <div className="text-xl font-bold text-green-600">תפריט</div>
 
             <Link
-              href={`/?family_id=${FAMILY_ID}`}
+              href="/"
               onClick={() => setMenuOpen(false)}
               className="flex items-center gap-2 text-lg"
             >
@@ -525,7 +574,7 @@ export default function HomePage() {
             </Link>
 
             <Link
-              href={`/reports?family_id=${FAMILY_ID}`}
+              href="/reports"
               onClick={() => setMenuOpen(false)}
               className="flex items-center gap-2 text-lg"
             >

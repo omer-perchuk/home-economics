@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -12,6 +12,7 @@ from app.services.report_service import (
     get_month_summary,
     get_transactions_by_month,
 )
+from app.utils.session_auth import get_current_session
 
 router = APIRouter(prefix="/api", tags=["dashboard"])
 
@@ -24,7 +25,6 @@ class TransactionCreate(BaseModel):
     day: int
     month: int
     year: int
-    family_id: int
 
 
 class TransactionUpdate(BaseModel):
@@ -39,30 +39,35 @@ class TransactionUpdate(BaseModel):
 
 @router.get("/months")
 def api_months(
-    family_id: Optional[int] = Query(default=None),
+    session=Depends(get_current_session),
     db: Session = Depends(get_db),
 ):
-    return get_available_months(db, family_id=family_id)
+    return get_available_months(db, family_id=session.family_id)
 
 
 @router.get("/summary")
 def api_summary(
     month: int,
     year: int,
-    family_id: Optional[int] = Query(default=None),
+    session=Depends(get_current_session),
     db: Session = Depends(get_db),
 ):
-    return get_month_summary(db, month, year, family_id=family_id)
+    return get_month_summary(db, month, year, family_id=session.family_id)
 
 
 @router.get("/transactions")
 def api_transactions(
     month: int,
     year: int,
-    family_id: Optional[int] = Query(default=None),
+    session=Depends(get_current_session),
     db: Session = Depends(get_db),
 ):
-    transactions = get_transactions_by_month(db, month, year, family_id=family_id)
+    transactions = get_transactions_by_month(
+        db,
+        month,
+        year,
+        family_id=session.family_id,
+    )
 
     return [
         {
@@ -80,6 +85,7 @@ def api_transactions(
 @router.post("/transactions")
 def create_transaction(
     data: TransactionCreate,
+    session=Depends(get_current_session),
     db: Session = Depends(get_db),
 ):
     created_at = datetime(data.year, data.month, data.day)
@@ -90,7 +96,8 @@ def create_transaction(
         amount=data.amount,
         category=data.category,
         type=data.type,
-        family_id=data.family_id,
+        family_id=session.family_id,
+        user_id=session.user_id,
         created_at=created_at,
     )
 
@@ -105,11 +112,18 @@ def create_transaction(
 
 
 @router.delete("/transactions/{transaction_id}")
-def delete_transaction(transaction_id: int, db: Session = Depends(get_db)):
-    transaction = db.query(Transaction).filter(Transaction.id == transaction_id).first()
+def delete_transaction(
+    transaction_id: int,
+    session=Depends(get_current_session),
+    db: Session = Depends(get_db),
+):
+    transaction = db.query(Transaction).filter(
+        Transaction.id == transaction_id,
+        Transaction.family_id == session.family_id,
+    ).first()
 
     if not transaction:
-        return {"error": "Transaction not found"}
+        raise HTTPException(status_code=404, detail="Transaction not found")
 
     db.delete(transaction)
     db.commit()
@@ -121,12 +135,16 @@ def delete_transaction(transaction_id: int, db: Session = Depends(get_db)):
 def update_transaction(
     transaction_id: int,
     data: TransactionUpdate,
+    session=Depends(get_current_session),
     db: Session = Depends(get_db),
 ):
-    transaction = db.query(Transaction).filter(Transaction.id == transaction_id).first()
+    transaction = db.query(Transaction).filter(
+        Transaction.id == transaction_id,
+        Transaction.family_id == session.family_id,
+    ).first()
 
     if not transaction:
-        return {"error": "Transaction not found"}
+        raise HTTPException(status_code=404, detail="Transaction not found")
 
     transaction.description = data.description
     transaction.amount = data.amount
