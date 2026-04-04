@@ -7,6 +7,8 @@ from sqlalchemy.orm import Session
 
 from app.db.database import get_db
 from app.db.models import Transaction, User
+
+from app.services.magic_link_service import create_magic_link
 from app.services.ai_categorizer import categorize_transaction_text
 from app.services.report_service import (
     get_current_month_transactions,
@@ -64,6 +66,7 @@ def normalize_phone_for_db(phone: str) -> str:
 
     return f"whatsapp:+{digits}"
 
+
 def normalize_admin_phone_input(phone: str) -> str:
     digits = "".join(ch for ch in phone if ch.isdigit())
     if not digits:
@@ -76,6 +79,8 @@ def normalize_admin_phone_input(phone: str) -> str:
         digits = f"972{digits}"
 
     return f"whatsapp:+{digits}"
+
+
 async def send_whatsapp_message(to_number: str, message: str) -> None:
     if not META_ACCESS_TOKEN or not META_PHONE_NUMBER_ID:
         print("Meta credentials are missing. Message was not sent.")
@@ -192,9 +197,12 @@ async def whatsapp_webhook(
     # אישור / דחייה על ידי מנהל
     # ===============================
     if message.startswith("אשר "):
-        request_id_text = message.replace("אשר", "", 1).strip()
-
-        if not request_id_text.isdigit():
+        if not user.is_admin or not user.family_id:
+            background_tasks.add_task(
+                send_whatsapp_message,
+                sender,
+                "רק מנהל משפחה יכול לאשר בקשות."
+            )
             return build_empty_ok_response()
 
         request_id_text = message.replace("אשר", "", 1).strip()
@@ -280,8 +288,7 @@ async def whatsapp_webhook(
     # ===============================
     # onboarding
     # ===============================
-    if not user.family_id :
-
+    if not user.family_id:
         if user_state and user_state.get("action") == "create_family_name":
             family_name = raw_message.strip()
             family = create_family_for_user(db, user, family_name)
@@ -306,7 +313,7 @@ async def whatsapp_webhook(
                 )
                 return build_empty_ok_response()
 
-            if admin_user.phone == user.phone:  # ✅ חשוב
+            if admin_user.phone == user.phone:
                 background_tasks.add_task(
                     send_whatsapp_message,
                     sender,
@@ -358,6 +365,9 @@ async def whatsapp_webhook(
         )
         return build_empty_ok_response()
 
+    # ===============================
+    # מחיקה - בחירת מספרים
+    # ===============================
     if user_state and user_state.get("action") == "delete_select":
         transaction_ids = user_state.get("transaction_ids", [])
 
@@ -397,6 +407,9 @@ async def whatsapp_webhook(
         )
         return build_empty_ok_response()
 
+    # ===============================
+    # סיכום - מחכים לחודש
+    # ===============================
     if user_state and user_state.get("action") == "awaiting_summary_month":
         parsed_month = parse_month_input(message)
 
@@ -415,16 +428,25 @@ async def whatsapp_webhook(
 
         formatted_summary = format_summary_for_whatsapp_short(summary)
 
+        magic_link = create_magic_link(
+            user_id=user.id,
+            family_id=family.id,
+            base_url=DASHBOARD_URL,
+        )
+
         background_tasks.add_task(
             send_whatsapp_message,
             sender,
             f"""{formatted_summary}
 
-📊 לאתר:
-{DASHBOARD_URL}"""
+        🔐 כניסה מאובטחת לאתר:
+        {magic_link}"""
         )
         return build_empty_ok_response()
 
+    # ===============================
+    # עדכון - בחירת רשומה
+    # ===============================
     if user_state and user_state.get("action") == "update_select":
         if not message.isdigit():
             background_tasks.add_task(
@@ -462,6 +484,9 @@ async def whatsapp_webhook(
         )
         return build_empty_ok_response()
 
+    # ===============================
+    # עדכון - קבלת ערך חדש
+    # ===============================
     if user_state and user_state.get("action") == "update_new_value":
         transaction_id = user_state.get("transaction_id")
 
@@ -507,6 +532,9 @@ async def whatsapp_webhook(
         )
         return build_empty_ok_response()
 
+    # ===============================
+    # פקודת מחיקה
+    # ===============================
     if command == "delete":
         transactions = get_current_month_transactions(db, family.id)
 
@@ -540,6 +568,9 @@ async def whatsapp_webhook(
         )
         return build_empty_ok_response()
 
+    # ===============================
+    # פקודת עדכון
+    # ===============================
     if command == "update":
         transactions = get_current_month_transactions(db, family.id)
         if not transactions:
@@ -569,20 +600,32 @@ async def whatsapp_webhook(
         )
         return build_empty_ok_response()
 
+    # ===============================
+    # רשימת רשומות חודש נוכחי
+    # ===============================
     if command == "list":
         transactions = get_current_month_transactions(db, family.id)
         formatted = format_transactions_for_whatsapp_short(transactions)
+
+        magic_link = create_magic_link(
+            user_id=user.id,
+            family_id=family.id,
+            base_url=DASHBOARD_URL,
+        )
 
         background_tasks.add_task(
             send_whatsapp_message,
             sender,
             f"""{formatted}
 
-📊 לאתר:
-{DASHBOARD_URL}"""
+        🔐 כניסה מאובטחת לאתר:
+        {magic_link}"""
         )
         return build_empty_ok_response()
 
+    # ===============================
+    # פקודת סיכום
+    # ===============================
     if command == "summary":
         set_user_state(
             sender,
@@ -596,15 +639,27 @@ async def whatsapp_webhook(
         )
         return build_empty_ok_response()
 
+    # ===============================
+    # פקודת אתר
+    # ===============================
     if command == "site":
+        magic_link = create_magic_link(
+            user_id=user.id,
+            family_id=family.id,
+            base_url=DASHBOARD_URL,
+        )
+
         background_tasks.add_task(
             send_whatsapp_message,
             sender,
-            f"""📊 קישור לאתר:
-{DASHBOARD_URL}"""
+            f"""🔐 כניסה מאובטחת לאתר:
+    {magic_link}"""
         )
         return build_empty_ok_response()
 
+    # ===============================
+    # פקודת עזרה
+    # ===============================
     if command == "help":
         background_tasks.add_task(
             send_whatsapp_message,
