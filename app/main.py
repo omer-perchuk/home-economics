@@ -4,9 +4,10 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.services.parser_service import parse_expense_text
-from app.db.database import get_db
-from app.db.models import Transaction
+from app.services.report_service import get_category_summary
 
+from app.db.database import Base, engine, get_db
+from app.db.models import Transaction
 from app.db.login_token import LoginToken
 from app.db.user_session import UserSession
 
@@ -22,7 +23,7 @@ app = FastAPI()
 
 @app.on_event("startup")
 def startup():
-    print("=== APP STARTUP ===")
+    Base.metadata.create_all(bind=engine)
 
 
 app.add_middleware(
@@ -49,8 +50,24 @@ def root():
 
 
 @app.post("/parse-expense")
-def parse_expense(data: ExpenseInput):
+def parse_expense(data: ExpenseInput, db: Session = Depends(get_db)):
     parsed_data = parse_expense_text(data.text)
+
+    if parsed_data["amount"] is not None:
+        transaction = Transaction(
+            original_text=parsed_data["original_text"],
+            description=parsed_data["description"],
+            amount=parsed_data["amount"],
+            type=parsed_data["type"],
+            category=parsed_data["category"]
+        )
+
+        db.add(transaction)
+        db.commit()
+        db.refresh(transaction)
+
+        parsed_data["id"] = transaction.id
+
     return parsed_data
 
 
@@ -104,6 +121,7 @@ def debug_families(db: Session = Depends(get_db)):
     from app.db.models import Family, User
 
     families = db.query(Family).all()
+
     result = []
 
     for f in families:
@@ -111,12 +129,11 @@ def debug_families(db: Session = Depends(get_db)):
 
         result.append({
             "family": f.name,
+            "twilio_number": f.twilio_whatsapp_number,
             "members": [
                 {
                     "name": u.name,
-                    "phone": u.phone,
-                    "is_admin": u.is_admin,
-                    "is_approved": u.is_approved,
+                    "phone": u.phone
                 }
                 for u in users
             ]
