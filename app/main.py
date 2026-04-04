@@ -4,10 +4,9 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.services.parser_service import parse_expense_text
-from app.services.report_service import get_category_summary
-
-from app.db.database import Base, engine, get_db
+from app.db.database import get_db
 from app.db.models import Transaction
+
 from app.db.login_token import LoginToken
 from app.db.user_session import UserSession
 
@@ -23,7 +22,7 @@ app = FastAPI()
 
 @app.on_event("startup")
 def startup():
-    Base.metadata.create_all(bind=engine)
+    print("=== APP STARTUP ===")
 
 
 app.add_middleware(
@@ -39,6 +38,7 @@ app.include_router(dashboard_api_router)
 app.include_router(settings_api_router)
 app.include_router(auth_api_router)
 
+
 class ExpenseInput(BaseModel):
     text: str
 
@@ -49,30 +49,14 @@ def root():
 
 
 @app.post("/parse-expense")
-def parse_expense(data: ExpenseInput, db: Session = Depends(get_db)):
+def parse_expense(data: ExpenseInput):
     parsed_data = parse_expense_text(data.text)
-
-    if parsed_data["amount"] is not None:
-        transaction = Transaction(
-            original_text=parsed_data["original_text"],
-            description=parsed_data["description"],
-            amount=parsed_data["amount"],
-            type=parsed_data["type"],
-            category=parsed_data["category"]
-        )
-
-        db.add(transaction)
-        db.commit()
-        db.refresh(transaction)
-
-        parsed_data["id"] = transaction.id
-
     return parsed_data
 
 
 @app.get("/transactions")
 def get_transactions(
-    session = Depends(get_current_session),
+    session=Depends(get_current_session),
     db: Session = Depends(get_db)
 ):
     transactions = (
@@ -95,9 +79,10 @@ def get_transactions(
         for t in transactions
     ]
 
+
 @app.get("/report/categories")
 def category_report(
-    session = Depends(get_current_session),
+    session=Depends(get_current_session),
     db: Session = Depends(get_db)
 ):
     transactions = (
@@ -113,12 +98,12 @@ def category_report(
 
     return summary
 
+
 @app.get("/debug/families")
 def debug_families(db: Session = Depends(get_db)):
     from app.db.models import Family, User
 
     families = db.query(Family).all()
-
     result = []
 
     for f in families:
@@ -126,11 +111,12 @@ def debug_families(db: Session = Depends(get_db)):
 
         result.append({
             "family": f.name,
-            "twilio_number": f.twilio_whatsapp_number,
             "members": [
                 {
                     "name": u.name,
-                    "phone": u.phone
+                    "phone": u.phone,
+                    "is_admin": u.is_admin,
+                    "is_approved": u.is_approved,
                 }
                 for u in users
             ]
@@ -163,8 +149,9 @@ def fix_transaction_families(db: Session = Depends(get_db)):
 
     return {"updated_transactions": updated}
 
+
 @app.get("/api/me")
-def get_me(session = Depends(get_current_session)):
+def get_me(session=Depends(get_current_session)):
     return {
         "user_id": session.user_id,
         "family_id": session.family_id
