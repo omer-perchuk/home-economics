@@ -62,8 +62,8 @@ def verify_magic_link(
         key="session_token",
         value=raw_session_token,
         httponly=True,
-        secure=False,   # בלוקאלי להשאיר False. בפרודקשן נשנה ל-True
-        samesite="lax",
+        secure=True,
+        samesite="none",
         max_age=SESSION_TTL_MINUTES * 60,
     )
 
