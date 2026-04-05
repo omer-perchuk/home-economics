@@ -6,10 +6,11 @@ from app.utils.auth_tokens import generate_raw_token, hash_token
 
 
 MAGIC_LINK_TTL_MINUTES = 15
-BACKEND_URL = "https://ph6dqc68jq.us-east-1.awsapprunner.com"
+
+FRONTEND_URL = "https://aws-migration-test.d11fqx2zyfwk68.amplifyapp.com"
 
 
-def create_magic_link(user_id: int, family_id: int, base_url: str) -> str:
+def create_magic_link(user_id: int, family_id: int) -> str:
     db = SessionLocal()
     try:
         raw_token = generate_raw_token()
@@ -25,6 +26,8 @@ def create_magic_link(user_id: int, family_id: int, base_url: str) -> str:
         db.add(login_token)
         db.commit()
 
-        return f"{BACKEND_URL}/api/auth/magic-login?token={raw_token}"
+        # ✅ שולחים ל-FRONTEND (ולא לבקאנד)
+        return f"{FRONTEND_URL}/auth?token={raw_token}"
+
     finally:
         db.close()
