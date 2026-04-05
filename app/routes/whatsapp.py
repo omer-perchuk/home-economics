@@ -168,7 +168,7 @@ async def whatsapp_webhook(
             return build_empty_ok_response()
 
         raw_message = message_data["text"]["body"].strip()
-        message = raw_message.lower()
+        message = raw_message.lower().strip()
 
         sender_raw = message_data.get("from", "")
         sender = normalize_phone_for_db(sender_raw)
@@ -191,7 +191,23 @@ async def whatsapp_webhook(
     print("=== FAMILY FOUND ===", family)
 
     user_state = get_user_state(sender)
-    command = detect_command(message)
+
+    if message in ["סיכום", "summary"]:
+        command = "summary"
+    elif message in ["הצג", "רשימה", "list"]:
+        command = "list"
+    elif message in ["אתר", "site"]:
+        command = "site"
+    elif message in ["עדכן", "עדכון", "update"]:
+        command = "update"
+    elif message in ["מחק", "מחיקה", "delete"]:
+        command = "delete"
+    elif message in ["עזרה", "help"]:
+        command = "help"
+    else:
+        command = detect_command(message)
+
+    print("=== DETECTED COMMAND ===", command)
 
     # ===============================
     # אישור / דחייה על ידי מנהל
@@ -214,7 +230,9 @@ async def whatsapp_webhook(
             )
             return build_empty_ok_response()
 
-        join_request = get_pending_join_request_for_admin(db, int(request_id_text), user.id)
+        join_request = get_pending_join_request_for_admin(
+            db, int(request_id_text), user.id
+        )
         if not join_request:
             background_tasks.add_task(
                 send_whatsapp_message,
@@ -258,7 +276,9 @@ async def whatsapp_webhook(
             )
             return build_empty_ok_response()
 
-        join_request = get_pending_join_request_for_admin(db, int(request_id_text), user.id)
+        join_request = get_pending_join_request_for_admin(
+            db, int(request_id_text), user.id
+        )
         if not join_request:
             background_tasks.add_task(
                 send_whatsapp_message,
@@ -275,7 +295,11 @@ async def whatsapp_webhook(
             f"❌ הבקשה {join_request.id} נדחתה."
         )
 
-        requester_user = db.query(User).filter(User.id == join_request.requester_user_id).first()
+        requester_user = (
+            db.query(User)
+            .filter(User.id == join_request.requester_user_id)
+            .first()
+        )
         if requester_user:
             background_tasks.add_task(
                 send_whatsapp_message,
@@ -427,7 +451,6 @@ async def whatsapp_webhook(
         clear_user_state(sender)
 
         formatted_summary = format_summary_for_whatsapp_short(summary)
-
         magic_link = create_magic_link(
             user_id=user.id,
             family_id=family.id,
@@ -438,8 +461,8 @@ async def whatsapp_webhook(
             sender,
             f"""{formatted_summary}
 
-        🔐 כניסה מאובטחת לאתר:
-        {magic_link}"""
+🔐 כניסה מאובטחת לאתר:
+{magic_link}"""
         )
         return build_empty_ok_response()
 
@@ -602,24 +625,25 @@ async def whatsapp_webhook(
     # ===============================
     # רשימת רשומות חודש נוכחי
     # ===============================
-        if command == "list":
-            transactions = get_current_month_transactions(db, family.id)
-            formatted = format_transactions_for_whatsapp_short(transactions)
+    if command == "list":
+        transactions = get_current_month_transactions(db, family.id)
+        formatted = format_transactions_for_whatsapp_short(transactions)
 
-            magic_link = create_magic_link(
-                user_id=user.id,
-                family_id=family.id,
-            )
+        magic_link = create_magic_link(
+            user_id=user.id,
+            family_id=family.id,
+        )
 
-            background_tasks.add_task(
-                send_whatsapp_message,
-                sender,
-                f"""{formatted}
+        background_tasks.add_task(
+            send_whatsapp_message,
+            sender,
+            f"""{formatted}
 
-    🔐 כניסה מאובטחת לאתר:
-    {magic_link}"""
-            )
-            return build_empty_ok_response()
+🔐 כניסה מאובטחת לאתר:
+{magic_link}"""
+        )
+        return build_empty_ok_response()
+
     # ===============================
     # פקודת סיכום
     # ===============================
@@ -639,19 +663,20 @@ async def whatsapp_webhook(
     # ===============================
     # פקודת אתר
     # ===============================
-        if command == "site":
-            magic_link = create_magic_link(
-                user_id=user.id,
-                family_id=family.id,
-            )
+    if command == "site":
+        magic_link = create_magic_link(
+            user_id=user.id,
+            family_id=family.id,
+        )
 
-            background_tasks.add_task(
-                send_whatsapp_message,
-                sender,
-                f"""🔐 כניסה מאובטחת לאתר:
-    {magic_link}"""
-            )
-            return build_empty_ok_response()
+        background_tasks.add_task(
+            send_whatsapp_message,
+            sender,
+            f"""🔐 כניסה מאובטחת לאתר:
+{magic_link}"""
+        )
+        return build_empty_ok_response()
+
     # ===============================
     # פקודת עזרה
     # ===============================
