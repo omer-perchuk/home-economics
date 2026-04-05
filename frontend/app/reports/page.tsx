@@ -64,19 +64,12 @@ const categoryColors: Record<string, string> = {
 };
 
 function formatCurrency(value: number) {
-  return `₪${value.toLocaleString("he-IL", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  })}`;
+  return `₪${value.toLocaleString("he-IL")}`;
 }
 
 export default function ReportsPage() {
-  const FAMILY_ID =
-    typeof window !== "undefined"
-      ? Number(new URLSearchParams(window.location.search).get("family_id") || "1")
-      : 1;
-
-  const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+  const backendUrl =
+    process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [months, setMonths] = useState<MonthOption[]>([]);
@@ -90,26 +83,36 @@ export default function ReportsPage() {
     SummaryCategory[]
   >([]);
 
+  // 🔥 קריאת token
+  function getAccessToken() {
+    if (typeof window === "undefined") return null;
+    return localStorage.getItem("access_token");
+  }
+
+  // 🔥 fetch עם auth
+  async function fetchWithAuth(url: string) {
+    const token = getAccessToken();
+
+    const res = await fetch(url, {
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    });
+
+    if (res.status === 401) {
+      localStorage.removeItem("access_token");
+      window.location.href = "/auth";
+      throw new Error("Unauthorized");
+    }
+
+    return res;
+  }
+
   async function loadMonths() {
     try {
-      const res = await fetch(`${backendUrl}/api/months?family_id=${FAMILY_ID}`);
-
-      if (!res.ok) {
-        console.error("loadMonths failed:", res.status, res.statusText);
-        setMonths([]);
-        setLoading(false);
-        return;
-      }
+      const res = await fetchWithAuth(`${backendUrl}/api/months`);
 
       const data = await res.json();
-
-      if (!Array.isArray(data)) {
-        console.error("loadMonths expected array but got:", data);
-        setMonths([]);
-        setLoading(false);
-        return;
-      }
-
       setMonths(data);
 
       if (data.length > 0) {
@@ -121,7 +124,6 @@ export default function ReportsPage() {
       setLoading(false);
     } catch (error) {
       console.error("loadMonths error:", error);
-      setMonths([]);
       setLoading(false);
     }
   }
@@ -134,31 +136,19 @@ export default function ReportsPage() {
 
       const summaries: Summary[] = await Promise.all(
         yearMonths.map(async (m) => {
-          const res = await fetch(
-            `${backendUrl}/api/summary?month=${m.month}&year=${m.year}&family_id=${FAMILY_ID}`
+          const res = await fetchWithAuth(
+            `${backendUrl}/api/summary?month=${m.month}&year=${m.year}`
           );
-
-          if (!res.ok) {
-            console.error("loadYearData summary failed:", m, res.status);
-            return {
-              month: m.month,
-              year: m.year,
-              expenses_total: 0,
-              income_total: 0,
-              balance: 0,
-              categories: [],
-            };
-          }
 
           const json = await res.json();
 
           return {
-            month: Number(json?.month ?? m.month),
-            year: Number(json?.year ?? m.year),
-            expenses_total: Number(json?.expenses_total ?? 0),
-            income_total: Number(json?.income_total ?? 0),
-            balance: Number(json?.balance ?? 0),
-            categories: Array.isArray(json?.categories) ? json.categories : [],
+            month: json.month,
+            year: json.year,
+            expenses_total: json.expenses_total,
+            income_total: json.income_total,
+            balance: json.balance,
+            categories: json.categories || [],
           };
         })
       );
@@ -166,40 +156,27 @@ export default function ReportsPage() {
       setYearSummaries(summaries);
 
       const categoriesSet = new Set<string>();
-      summaries.forEach((summary) => {
-        (Array.isArray(summary.categories) ? summary.categories : []).forEach((cat) =>
-          categoriesSet.add(cat.category)
-        );
-      });
+      summaries.forEach((s) =>
+        s.categories.forEach((c) => categoriesSet.add(c.category))
+      );
 
       setAllCategories(Array.from(categoriesSet));
     } catch (error) {
       console.error("loadYearData error:", error);
-      setYearSummaries([]);
-      setAllCategories([]);
     }
   }
 
   async function loadSingleMonthSummary(month: number, year: number) {
     try {
-      const res = await fetch(
-        `${backendUrl}/api/summary?month=${month}&year=${year}&family_id=${FAMILY_ID}`
+      const res = await fetchWithAuth(
+        `${backendUrl}/api/summary?month=${month}&year=${year}`
       );
-
-      if (!res.ok) {
-        console.error("loadSingleMonthSummary failed:", res.status, res.statusText);
-        setMonthlyCategoryData([]);
-        return;
-      }
 
       const summary = await res.json();
 
-      setMonthlyCategoryData(
-        Array.isArray(summary?.categories) ? summary.categories : []
-      );
+      setMonthlyCategoryData(summary.categories || []);
     } catch (error) {
       console.error("loadSingleMonthSummary error:", error);
-      setMonthlyCategoryData([]);
     }
   }
 
@@ -221,12 +198,10 @@ export default function ReportsPage() {
   }, [selectedMonthKey]);
 
   const availableYears = useMemo(() => {
-    if (!Array.isArray(months)) return [];
     return [...new Set(months.map((m) => m.year))].sort((a, b) => b - a);
   }, [months]);
 
   const monthsInSelectedYear = useMemo(() => {
-    if (selectedYear === null || !Array.isArray(months)) return [];
     return months
       .filter((m) => m.year === selectedYear)
       .sort((a, b) => a.month - b.month);
@@ -242,7 +217,7 @@ export default function ReportsPage() {
         row[cat] = 0;
       });
 
-      (Array.isArray(summary.categories) ? summary.categories : []).forEach((cat) => {
+      summary.categories.forEach((cat) => {
         row[cat.category] = cat.amount;
       });
 
@@ -252,147 +227,38 @@ export default function ReportsPage() {
 
   return (
     <main className="relative min-h-screen bg-gradient-to-b from-green-50 via-emerald-50 to-lime-50 text-slate-900">
-      {menuOpen && (
-        <>
-          <div
-            className="fixed inset-0 z-40 bg-black/30"
-            onClick={() => setMenuOpen(false)}
-          />
-          <div className="fixed right-0 top-0 z-50 h-full w-64 space-y-6 bg-white p-5 shadow-xl">
-            <div className="text-xl font-bold text-green-600">תפריט</div>
-
-            <Link
-              href={`/?family_id=${FAMILY_ID}`}
-              onClick={() => setMenuOpen(false)}
-              className="flex items-center gap-2 text-lg"
-            >
-              <Home size={20} />
-              דף הבית
-            </Link>
-
-            <Link
-              href={`/reports?family_id=${FAMILY_ID}`}
-              onClick={() => setMenuOpen(false)}
-              className="flex items-center gap-2 text-lg"
-            >
-              <FileBarChart2 size={20} />
-              דוחות
-            </Link>
-          </div>
-        </>
-      )}
-
       <div className="mx-auto max-w-md space-y-4 p-4">
-        <div className="flex items-center justify-between">
-          <div className="w-10" />
-          <h1 className="text-2xl font-bold text-green-600">📊 דוחות</h1>
-          <button onClick={() => setMenuOpen(true)} className="p-2">
-            <Menu />
-          </button>
-        </div>
+        <h1 className="text-2xl font-bold text-green-600 text-center">
+          📊 דוחות
+        </h1>
 
-        <div className="space-y-4 rounded-2xl bg-white p-4 shadow-sm">
-          <div className="text-right font-semibold">בחירת שנה</div>
-          <select
-            className="w-full rounded-xl border border-slate-200 p-3 text-right"
-            value={selectedYear ?? ""}
-            onChange={(e) => setSelectedYear(Number(e.target.value))}
-          >
-            {availableYears.map((year) => (
-              <option key={year} value={year}>
-                {year}
-              </option>
-            ))}
-          </select>
-        </div>
+        <select
+          className="w-full rounded-xl border p-3"
+          value={selectedYear ?? ""}
+          onChange={(e) => setSelectedYear(Number(e.target.value))}
+        >
+          {availableYears.map((year) => (
+            <option key={year}>{year}</option>
+          ))}
+        </select>
 
-        <div className="rounded-2xl bg-white p-4 shadow-sm">
-          <div className="mb-4 text-right text-lg font-semibold">
-            דוח הוצאות שנתי
-          </div>
-
-          <div className="h-80">
-            {loading ? (
-              <div className="text-center text-gray-500">טוען...</div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={annualChartData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="monthLabel" />
-                  <YAxis />
-                  <Tooltip formatter={(value) => formatCurrency(Number(value))} />
-                  {allCategories.map((category) => (
-                    <Bar
-                      key={category}
-                      dataKey={category}
-                      stackId="a"
-                      fill={categoryColors[category] || "#94a3b8"}
-                    />
-                  ))}
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-
-          <div className="mt-4 space-y-2">
-            {allCategories.map((category) => (
-              <div
-                key={category}
-                className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2"
-              >
-                <span className="text-sm text-slate-700">{category}</span>
-                <span
-                  className="h-3 w-3 rounded-full"
-                  style={{
-                    backgroundColor: categoryColors[category] || "#94a3b8",
-                  }}
+        <div className="h-80 bg-white p-4 rounded-2xl">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={annualChartData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="monthLabel" />
+              <YAxis />
+              <Tooltip formatter={(value) => formatCurrency(Number(value))} />
+              {allCategories.map((category) => (
+                <Bar
+                  key={category}
+                  dataKey={category}
+                  stackId="a"
+                  fill={categoryColors[category] || "#94a3b8"}
                 />
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="space-y-3 rounded-2xl bg-white p-4 shadow-sm">
-          <div className="text-right font-semibold">בחירת חודש לדוח חודשי</div>
-
-          <select
-            className="w-full rounded-xl border border-slate-200 p-3 text-right"
-            value={selectedMonthKey}
-            onChange={(e) => setSelectedMonthKey(e.target.value)}
-          >
-            {monthsInSelectedYear.map((m) => (
-              <option key={`${m.month}-${m.year}`} value={`${m.month}-${m.year}`}>
-                {m.month}/{m.year}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="rounded-2xl bg-white p-4 shadow-sm">
-          <div className="mb-4 text-right text-lg font-semibold">
-            דוח הוצאות חודשי לפי קטגוריה
-          </div>
-
-          <div className="h-80">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={Array.isArray(monthlyCategoryData) ? monthlyCategoryData : []}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="category" />
-                <YAxis />
-                <Tooltip formatter={(value) => formatCurrency(Number(value))} />
-                <Bar dataKey="amount">
-                  {(Array.isArray(monthlyCategoryData) ? monthlyCategoryData : []).map(
-                    (entry, index) => (
-                      <Cell
-                        key={index}
-                        fill={categoryColors[entry.category] || "#94a3b8"}
-                      />
-                    )
-                  )}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+              ))}
+            </BarChart>
+          </ResponsiveContainer>
         </div>
       </div>
     </main>

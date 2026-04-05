@@ -27,7 +27,6 @@ export default function AuthPageClient() {
       headers: {
         "Content-Type": "application/json",
       },
-      credentials: "include",
       body: JSON.stringify({ token }),
     })
       .then(async (res) => {
@@ -37,11 +36,19 @@ export default function AuthPageClient() {
         }
         return res.json();
       })
-      .then(() => {
+      .then((data) => {
+        if (!data.access_token) {
+          throw new Error("missing access token");
+        }
+
+        // 🔥 שומרים token
+        localStorage.setItem("access_token", data.access_token);
+
         setMessage("הכניסה הצליחה, מעביר...");
+
         setTimeout(() => {
           router.replace("/");
-        }, 1000);
+        }, 800);
       })
       .catch((err) => {
         console.error("verify-magic-link failed:", err);

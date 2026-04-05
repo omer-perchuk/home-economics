@@ -122,6 +122,11 @@ export default function HomePage() {
   const backendUrl =
     process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+  function getAccessToken() {
+    if (typeof window === "undefined") return null;
+    return localStorage.getItem("access_token");
+  }
+
   const [menuOpen, setMenuOpen] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
@@ -156,12 +161,18 @@ export default function HomePage() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
   async function fetchWithAuth(input: string, init?: RequestInit) {
+    const token = getAccessToken();
+
     const res = await fetch(input, {
       ...init,
-      credentials: "include",
+      headers: {
+        ...(init?.headers ?? {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
     });
 
     if (res.status === 401) {
+      localStorage.removeItem("access_token");
       router.replace("/auth");
       throw new Error("Not authenticated");
     }
@@ -171,11 +182,21 @@ export default function HomePage() {
 
   async function checkSession() {
     try {
+      const token = getAccessToken();
+
+      if (!token) {
+        router.replace("/auth");
+        return;
+      }
+
       const res = await fetch(`${backendUrl}/api/me`, {
-        credentials: "include",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
       });
 
       if (!res.ok) {
+        localStorage.removeItem("access_token");
         router.replace("/auth");
         return;
       }
@@ -183,6 +204,7 @@ export default function HomePage() {
       const data: MeResponse = await res.json();
 
       if (!data?.user_id || !data?.family_id) {
+        localStorage.removeItem("access_token");
         router.replace("/auth");
         return;
       }
@@ -190,6 +212,7 @@ export default function HomePage() {
       setIsAuthenticated(true);
     } catch (error) {
       console.error("checkSession error:", error);
+      localStorage.removeItem("access_token");
       router.replace("/auth");
     } finally {
       setAuthChecked(true);

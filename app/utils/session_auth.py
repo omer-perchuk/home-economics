@@ -1,4 +1,3 @@
-from datetime import datetime, timedelta
 from fastapi import Request, HTTPException, Depends
 from sqlalchemy.orm import Session
 
@@ -6,18 +5,14 @@ from app.db.database import get_db
 from app.db.user_session import UserSession
 from app.utils.auth_tokens import hash_token
 
-SESSION_TTL_MINUTES = 15
 
+def get_current_session(request: Request, db: Session = Depends(get_db)):
+    auth_header = request.headers.get("Authorization")
 
-def get_current_session(
-    request: Request,
-    db: Session = Depends(get_db),
-):
-    raw_token = request.cookies.get("session_token")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing token")
 
-    if not raw_token:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-
+    raw_token = auth_header.replace("Bearer ", "")
     token_hash = hash_token(raw_token)
 
     session = (
@@ -28,18 +23,5 @@ def get_current_session(
 
     if not session:
         raise HTTPException(status_code=401, detail="Invalid session")
-
-    if session.revoked_at is not None:
-        raise HTTPException(status_code=401, detail="Session revoked")
-
-    if session.expires_at < datetime.utcnow():
-        raise HTTPException(status_code=401, detail="Session expired")
-
-    # 🔥 הארכת זמן (כמו שרצית)
-    now = datetime.utcnow()
-    session.last_seen_at = now
-    session.expires_at = now + timedelta(minutes=SESSION_TTL_MINUTES)
-
-    db.commit()
 
     return session
