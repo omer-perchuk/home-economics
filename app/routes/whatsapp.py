@@ -431,7 +431,6 @@ async def whatsapp_webhook(
         magic_link = create_magic_link(
             user_id=user.id,
             family_id=family.id,
-            base_url=DASHBOARD_URL,
         )
 
         background_tasks.add_task(
@@ -603,26 +602,24 @@ async def whatsapp_webhook(
     # ===============================
     # רשימת רשומות חודש נוכחי
     # ===============================
-    if command == "list":
-        transactions = get_current_month_transactions(db, family.id)
-        formatted = format_transactions_for_whatsapp_short(transactions)
+        if command == "list":
+            transactions = get_current_month_transactions(db, family.id)
+            formatted = format_transactions_for_whatsapp_short(transactions)
 
-        magic_link = create_magic_link(
-            user_id=user.id,
-            family_id=family.id,
-            base_url=DASHBOARD_URL,
-        )
+            magic_link = create_magic_link(
+                user_id=user.id,
+                family_id=family.id,
+            )
 
-        background_tasks.add_task(
-            send_whatsapp_message,
-            sender,
-            f"""{formatted}
+            background_tasks.add_task(
+                send_whatsapp_message,
+                sender,
+                f"""{formatted}
 
-        🔐 כניסה מאובטחת לאתר:
-        {magic_link}"""
-        )
-        return build_empty_ok_response()
-
+    🔐 כניסה מאובטחת לאתר:
+    {magic_link}"""
+            )
+            return build_empty_ok_response()
     # ===============================
     # פקודת סיכום
     # ===============================
@@ -642,21 +639,19 @@ async def whatsapp_webhook(
     # ===============================
     # פקודת אתר
     # ===============================
-    if command == "site":
-        magic_link = create_magic_link(
-            user_id=user.id,
-            family_id=family.id,
-            base_url=DASHBOARD_URL,
-        )
+        if command == "site":
+            magic_link = create_magic_link(
+                user_id=user.id,
+                family_id=family.id,
+            )
 
-        background_tasks.add_task(
-            send_whatsapp_message,
-            sender,
-            f"""🔐 כניסה מאובטחת לאתר:
+            background_tasks.add_task(
+                send_whatsapp_message,
+                sender,
+                f"""🔐 כניסה מאובטחת לאתר:
     {magic_link}"""
-        )
-        return build_empty_ok_response()
-
+            )
+            return build_empty_ok_response()
     # ===============================
     # פקודת עזרה
     # ===============================
