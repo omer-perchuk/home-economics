@@ -403,6 +403,13 @@ async def whatsapp_webhook(
         return build_empty_ok_response()
 
     # ===============================
+    # הוספה - מחכים לטקסט של העסקה
+    # ===============================
+    if user_state and user_state.get("action") == "awaiting_add_transaction":
+        clear_user_state(sender)
+        # ממשיכים רגיל לזרימת ה-AI בהמשך
+
+    # ===============================
     # בחירת קטגוריה ע"י המשתמש
     # ===============================
     if user_state and user_state.get("action") == "choose_category":
@@ -684,6 +691,22 @@ async def whatsapp_webhook(
         return build_empty_ok_response()
 
     # ===============================
+    # פקודת הוספה
+    # ===============================
+    if command == "add_transaction":
+        set_user_state(
+            sender,
+            {"action": "awaiting_add_transaction"}
+        )
+
+        background_tasks.add_task(
+            send_whatsapp_message,
+            sender,
+            "📝 שלח לי את ההוצאה או ההכנסה בפורמט חופשי.\nלמשל:\nארומה 23\nשופרסל 200\nמשכורת 12000"
+        )
+        return build_empty_ok_response()
+
+    # ===============================
     # פקודת מחיקה
     # ===============================
     if command == "delete":
@@ -828,6 +851,7 @@ async def whatsapp_webhook(
 
     # קוראים ל-AI פעם אחת
     ai_base = categorize_transaction_text(raw_message)
+    print("=== AI BASE ===", ai_base)
 
     # אם אין סכום תקין - לא נשמור רשומה
     if ai_base["amount"] <= 0:
