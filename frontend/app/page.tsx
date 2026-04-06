@@ -562,11 +562,26 @@ export default function HomePage() {
     return Array.isArray(summary?.categories) ? summary.categories : [];
   }, [summary]);
 
-  const filteredTransactions = useMemo(() => {
-    const safeTransactions = Array.isArray(transactions) ? transactions : [];
-    if (!selectedCategory) return safeTransactions;
-    return safeTransactions.filter((tx) => tx.category === selectedCategory);
-  }, [transactions, selectedCategory]);
+const filteredTransactions = useMemo(() => {
+  const safeTransactions = Array.isArray(transactions) ? transactions : [];
+
+  const filtered = !selectedCategory
+    ? safeTransactions
+    : safeTransactions.filter((tx) => tx.category === selectedCategory);
+
+  return [...filtered].sort((a, b) => {
+    const [dayA, monthA] = a.date.split("/").map(Number);
+    const [dayB, monthB] = b.date.split("/").map(Number);
+
+    const yearA = selectedMonth?.year ?? new Date().getFullYear();
+    const yearB = selectedMonth?.year ?? new Date().getFullYear();
+
+    const dateA = new Date(yearA, monthA - 1, dayA).getTime();
+    const dateB = new Date(yearB, monthB - 1, dayB).getTime();
+
+    return dateB - dateA;
+  });
+}, [transactions, selectedCategory, selectedMonth]);
 
   if (!authChecked || !isAuthenticated) {
     return (
