@@ -65,3 +65,18 @@ class JoinRequest(Base):
     family_id = Column(Integer, ForeignKey("families.id"), nullable=False)
     status = Column(String, default="pending", nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+class MerchantMemory(Base):
+    __tablename__ = "merchant_memories"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    scope_type = Column(String, nullable=False)  # user / family / global
+    scope_id = Column(Integer, nullable=True)    # user_id / family_id / None
+
+    merchant_key = Column(String, nullable=False, index=True)
+    category = Column(String, nullable=False)
+    tx_type = Column(String, nullable=False)  # expense / income
+
+    count = Column(Integer, default=1, nullable=False)
+    last_used_at = Column(DateTime, default=datetime.utcnow, nullable=False)

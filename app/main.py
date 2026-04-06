@@ -8,6 +8,7 @@ from app.services.report_service import get_category_summary
 
 from app.db.database import Base, engine, get_db
 from app.db.models import Transaction
+from app.db.models import MerchantMemory
 from app.db.login_token import LoginToken
 from app.db.user_session import UserSession
 

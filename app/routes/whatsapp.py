@@ -8,6 +8,12 @@ from sqlalchemy.orm import Session
 from app.db.database import get_db
 from app.db.models import Transaction, User
 
+from app.services.merchant_memory_service import (
+    extract_merchant_key,
+    upsert_memory,
+    find_memory_candidates,
+)
+from app.services.intent_service import detect_intent_ai
 from app.services.magic_link_service import create_magic_link
 from app.services.ai_categorizer import categorize_transaction_text
 from app.services.report_service import (
@@ -206,6 +212,8 @@ async def whatsapp_webhook(
         command = "help"
     else:
         command = detect_command(message)
+    if not command or command == "unknown":
+        command = detect_intent_ai(raw_message)
 
     print("=== DETECTED COMMAND ===", command)
 
@@ -545,6 +553,36 @@ async def whatsapp_webhook(
 
         db.commit()
 
+        merchant_key = extract_merchant_key(raw_message)
+
+        if merchant_key:
+            upsert_memory(
+                db,
+                scope_type="user",
+                scope_id=user.id,
+                merchant_key=merchant_key,
+                category=transaction.category,
+                tx_type=transaction.type,
+            )
+
+            upsert_memory(
+                db,
+                scope_type="family",
+                scope_id=family.id,
+                merchant_key=merchant_key,
+                category=transaction.category,
+                tx_type=transaction.type,
+            )
+
+            upsert_memory(
+                db,
+                scope_type="global",
+                scope_id=None,
+                merchant_key=merchant_key,
+                category=transaction.category,
+                tx_type=transaction.type,
+            )
+
         clear_user_state(sender)
 
         background_tasks.add_task(
@@ -688,12 +726,20 @@ async def whatsapp_webhook(
         )
         return build_empty_ok_response()
 
-    # ===============================
-    # הוספת רשומה (AI)
-    # ===============================
-    ai_result = categorize_transaction_text(raw_message)
+    if user_state and user_state.get("action") == "choose_category":
+        ai_result = user_state.get("pending_ai_result")
 
-    if ai_result["amount"] > 0:
+        if message.isdigit():
+            index = int(message) - 1
+            suggestions = ai_result.get("suggestions", [])
+
+            if 0 <= index < len(suggestions):
+                ai_result["category"] = suggestions[index]
+        else:
+            ai_result["category"] = raw_message.strip()
+
+        clear_user_state(sender)
+
         transaction = Transaction(
             original_text=ai_result["original_text"],
             description=ai_result["description"],
@@ -707,6 +753,146 @@ async def whatsapp_webhook(
 
         db.add(transaction)
         db.commit()
+
+        background_tasks.add_task(
+            send_whatsapp_message,
+            sender,
+            format_added_transaction_message(ai_result)
+        )
+
+        return build_empty_ok_response()
+
+    # ===============================
+    # הוספת רשומה (AI + memory)
+    # ===============================
+    merchant_key = extract_merchant_key(raw_message)
+
+    memory_candidates = {"user": [], "family": [], "global": []}
+    if merchant_key:
+        memory_candidates = find_memory_candidates(db, user.id, family.id, merchant_key)
+
+    # קוראים ל-AI פעם אחת
+    ai_base = categorize_transaction_text(raw_message)
+
+    # אם יש זיכרון → משתמשים בו
+    if memory_candidates["user"]:
+        best = memory_candidates["user"][0]
+        ai_result = {
+            **ai_base,
+            "category": best.category,
+            "type": best.tx_type,
+        }
+
+    elif memory_candidates["family"]:
+        best = memory_candidates["family"][0]
+        ai_result = {
+            **ai_base,
+            "category": best.category,
+            "type": best.tx_type,
+        }
+
+    elif memory_candidates["global"]:
+        best = memory_candidates["global"][0]
+        ai_result = {
+            **ai_base,
+            "category": best.category,
+            "type": best.tx_type,
+        }
+
+    else:
+        ai_result = ai_base
+
+    has_memory = (
+            memory_candidates["user"]
+            or memory_candidates["family"]
+    )
+
+    needs_clarification = (
+            not has_memory and (
+            ai_result.get("confidence", 1) < 0.6
+            or ai_result["category"] == "אחר"
+    )
+    )
+    if needs_clarification:
+        suggestions = []
+
+        for m in memory_candidates["user"][:2]:
+            if m.category not in suggestions:
+                suggestions.append(m.category)
+
+        for s in ai_result.get("suggestions", []):
+            if s not in suggestions:
+                suggestions.append(s)
+
+        suggestions = suggestions[:3]
+
+        if not suggestions:
+            suggestions = ["אוכל בחוץ וקפה", "סופר וקניות לבית", "אחר"]
+
+        set_user_state(sender, {
+            "action": "choose_category",
+            "pending_ai_result": ai_result,
+        })
+
+        options_text = "\n".join(
+            [f"{i + 1}. {cat}" for i, cat in enumerate(suggestions)]
+        )
+
+        background_tasks.add_task(
+            send_whatsapp_message,
+            sender,
+            f"""לא בטוח 🤔
+    בחר קטגוריה:
+    {options_text}
+
+    או כתוב בעצמך"""
+        )
+
+        return build_empty_ok_response()
+
+    if ai_result["amount"] > 0:
+
+        transaction = Transaction(
+            original_text=ai_result["original_text"],
+            description=ai_result["description"],
+            amount=ai_result["amount"],
+            type=ai_result["type"],
+            category=ai_result["category"],
+            family_id=family.id,
+            user_id=user.id,
+            user_phone=user.phone,
+        )
+
+        db.add(transaction)
+        db.commit()
+
+        if merchant_key:
+            upsert_memory(
+                db,
+                scope_type="user",
+                scope_id=user.id,
+                merchant_key=merchant_key,
+                category=ai_result["category"],
+                tx_type=ai_result["type"],
+            )
+
+            upsert_memory(
+                db,
+                scope_type="family",
+                scope_id=family.id,
+                merchant_key=merchant_key,
+                category=ai_result["category"],
+                tx_type=ai_result["type"],
+            )
+
+            upsert_memory(
+                db,
+                scope_type="global",
+                scope_id=None,
+                merchant_key=merchant_key,
+                category=ai_result["category"],
+                tx_type=ai_result["type"],
+            )
 
         background_tasks.add_task(
             send_whatsapp_message,
