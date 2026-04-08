@@ -62,7 +62,7 @@ class JoinRequest(Base):
     requester_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     requester_phone = Column(String, nullable=False)
     admin_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    family_id = Column(Integer, ForeignKey("families.id"), nullable=False)
+    family_id = Column(Integer, ForeignKey("families.id"), nullable=True)
     status = Column(String, default="pending", nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
