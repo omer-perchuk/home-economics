@@ -54,6 +54,19 @@ router = APIRouter()
 
 DASHBOARD_URL = "https://aws-migration-test.d11fqx2zyfwk68.amplifyapp.com"
 
+CATEGORY_SELECTION_OPTIONS = [
+    "סופר וקניות לבית",
+    "אוכל בחוץ וקפה",
+    "תחבורה",
+    "בריאות ופארם",
+    "דיור וחשבונות",
+    "בילויים ופנאי",
+    "ביגוד והנעלה",
+    "ילדים ומשפחה",
+    "לימודים",
+    "אחר",
+]
+
 META_ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN", "")
 META_VERIFY_TOKEN = os.getenv("META_VERIFY_TOKEN", "")
 META_PHONE_NUMBER_ID = os.getenv("META_PHONE_NUMBER_ID", "")
@@ -223,30 +236,23 @@ async def whatsapp_webhook(
     print("=== DETECTED COMMAND ===", command)
 
     # ===============================
-    # אישור / דחייה על ידי מנהל
+    # אישור / דחיית בקשת הצטרפות לפי 1 / 2
     # ===============================
-    if message.startswith("אשר "):
+    if user_state and user_state.get("action") == "approve_join_request":
         if not user.is_admin or not user.family_id:
+            clear_user_state(sender)
             background_tasks.add_task(
                 send_whatsapp_message,
                 sender,
-                "רק מנהל משפחה יכול לאשר בקשות."
+                "רק מנהל משפחה יכול לאשר או לדחות בקשות."
             )
             return build_empty_ok_response()
 
-        request_id_text = message.replace("אשר", "", 1).strip()
-        if not request_id_text.isdigit():
-            background_tasks.add_task(
-                send_whatsapp_message,
-                sender,
-                "שלח: אשר <מספר בקשה>"
-            )
-            return build_empty_ok_response()
+        join_request_id = user_state.get("join_request_id")
+        join_request = get_pending_join_request_for_admin(db, join_request_id, user.id)
 
-        join_request = get_pending_join_request_for_admin(
-            db, int(request_id_text), user.id
-        )
         if not join_request:
+            clear_user_state(sender)
             background_tasks.add_task(
                 send_whatsapp_message,
                 sender,
@@ -254,72 +260,54 @@ async def whatsapp_webhook(
             )
             return build_empty_ok_response()
 
-        requester = approve_join_request(db, join_request)
+        if message == "1":
+            requester = approve_join_request(db, join_request)
+            clear_user_state(sender)
+
+            background_tasks.add_task(
+                send_whatsapp_message,
+                sender,
+                "✅ הבקשה אושרה."
+            )
+
+            if requester:
+                background_tasks.add_task(
+                    send_whatsapp_message,
+                    requester.phone,
+                    "✅ הבקשה שלך אושרה! צורפת למשפחה."
+                )
+
+            return build_empty_ok_response()
+
+        if message == "2":
+            reject_join_request(db, join_request)
+            clear_user_state(sender)
+
+            background_tasks.add_task(
+                send_whatsapp_message,
+                sender,
+                "❌ הבקשה נדחתה."
+            )
+
+            requester_user = (
+                db.query(User)
+                .filter(User.id == join_request.requester_user_id)
+                .first()
+            )
+            if requester_user:
+                background_tasks.add_task(
+                    send_whatsapp_message,
+                    requester_user.phone,
+                    "❌ הבקשה שלך להצטרף למשפחה נדחתה."
+                )
+
+            return build_empty_ok_response()
 
         background_tasks.add_task(
             send_whatsapp_message,
             sender,
-            f"✅ הבקשה {join_request.id} אושרה."
+            "השב 1 כדי לאשר או 2 כדי לדחות."
         )
-
-        if requester:
-            background_tasks.add_task(
-                send_whatsapp_message,
-                requester.phone,
-                "✅ הבקשה שלך אושרה! צורפת למשפחה."
-            )
-
-        return build_empty_ok_response()
-
-    if message.startswith("דחה "):
-        if not user.is_admin or not user.family_id:
-            background_tasks.add_task(
-                send_whatsapp_message,
-                sender,
-                "רק מנהל משפחה יכול לדחות בקשות."
-            )
-            return build_empty_ok_response()
-
-        request_id_text = message.replace("דחה", "", 1).strip()
-        if not request_id_text.isdigit():
-            background_tasks.add_task(
-                send_whatsapp_message,
-                sender,
-                "שלח: דחה <מספר בקשה>"
-            )
-            return build_empty_ok_response()
-
-        join_request = get_pending_join_request_for_admin(
-            db, int(request_id_text), user.id
-        )
-        if not join_request:
-            background_tasks.add_task(
-                send_whatsapp_message,
-                sender,
-                "לא נמצאה בקשה ממתינה."
-            )
-            return build_empty_ok_response()
-
-        reject_join_request(db, join_request)
-
-        background_tasks.add_task(
-            send_whatsapp_message,
-            sender,
-            f"❌ הבקשה {join_request.id} נדחתה."
-        )
-
-        requester_user = (
-            db.query(User)
-            .filter(User.id == join_request.requester_user_id)
-            .first()
-        )
-        if requester_user:
-            background_tasks.add_task(
-                send_whatsapp_message,
-                requester_user.phone,
-                "❌ הבקשה שלך להצטרף למשפחה נדחתה."
-            )
-
         return build_empty_ok_response()
 
     # ===============================
@@ -367,10 +355,24 @@ async def whatsapp_webhook(
                 "📨 בקשה נשלחה למנהל. מחכה לאישור."
             )
 
+            # שומרים למנהל state כדי שיוכל לענות 1 או 2
+            set_user_state(
+                admin_user.phone,
+                {
+                    "action": "approve_join_request",
+                    "join_request_id": join_request.id,
+                }
+            )
+
             background_tasks.add_task(
                 send_whatsapp_message,
                 admin_user.phone,
-                f"👤 בקשה חדשה\n{user.phone}\nאשר {join_request.id} / דחה {join_request.id}"
+                f"""👤 בקשת הצטרפות חדשה
+מהמספר: {user.phone}
+
+השב:
+1 - אשר
+2 - דחה"""
             )
 
             return build_empty_ok_response()
@@ -419,23 +421,31 @@ async def whatsapp_webhook(
             clear_user_state(sender)
             return build_empty_ok_response()
 
-        chosen_category = None
+        options = user_state.get("category_options", [])
 
-        # אם המשתמש שלח מספר – נשתמש באפשרויות ששמרנו ב-state
-        if message.isdigit():
-            index = int(message) - 1
-            suggestions = user_state.get("category_options", [])
+        # רק בחירה לפי מספר
+        if not message.isdigit():
+            background_tasks.add_task(
+                send_whatsapp_message,
+                sender,
+                "בחר מספר מהרשימה בלבד."
+            )
+            return build_empty_ok_response()
 
-            if 0 <= index < len(suggestions):
-                chosen_category = suggestions[index]
+        index = int(message) - 1
 
-        # אם לא נבחר מספר תקין, נניח שהמשתמש כתב קטגוריה חופשית
-        if not chosen_category:
-            chosen_category = raw_message.strip()
+        if index < 0 or index >= len(options):
+            background_tasks.add_task(
+                send_whatsapp_message,
+                sender,
+                "בחר מספר תקין מהרשימה."
+            )
+            return build_empty_ok_response()
 
+        chosen_category = options[index]
         ai_result["category"] = chosen_category
 
-        # לא שומרים לעולם רשומה בלי סכום תקין
+        # לא שומרים רשומה בלי סכום תקין
         if ai_result["amount"] <= 0:
             clear_user_state(sender)
             background_tasks.add_task(
@@ -459,7 +469,7 @@ async def whatsapp_webhook(
         db.add(transaction)
         db.commit()
 
-        # לאחר בחירה, שומרים זיכרון כדי שבפעם הבאה הבוט ילמד
+        # אחרי בחירה שומרים זיכרון כדי שהבוט ילמד לפעם הבאה
         merchant_key = extract_merchant_key(ai_result["original_text"])
 
         if merchant_key:
@@ -905,35 +915,27 @@ async def whatsapp_webhook(
 
     # אם אין ודאות - נשאל את המשתמש
     if needs_clarification:
-        suggestions = []
-
-        for s in ai_result.get("suggestions", []):
-            if s not in suggestions:
-                suggestions.append(s)
-
-        suggestions = suggestions[:3]
-
-        if not suggestions:
-            suggestions = ["אוכל בחוץ וקפה", "סופר וקניות לבית", "אחר"]
+        options = CATEGORY_SELECTION_OPTIONS
 
         set_user_state(sender, {
             "action": "choose_category",
             "pending_ai_result": ai_result,
-            "category_options": suggestions,
+            "category_options": options,
         })
 
         options_text = "\n".join(
-            [f"{i + 1}. {cat}" for i, cat in enumerate(suggestions)]
+            [f"{i + 1}. {cat}" for i, cat in enumerate(options)]
         )
 
         background_tasks.add_task(
             send_whatsapp_message,
             sender,
-            f"""לא בטוח 🤔
-בחר קטגוריה:
+            f"""🤔 לא הצלחתי לזהות בוודאות את הקטגוריה.
+
+באיזו קטגוריה לשייך את הרשומה?
 {options_text}
 
-או כתוב בעצמך"""
+השב רק עם מספר."""
         )
 
         return build_empty_ok_response()
