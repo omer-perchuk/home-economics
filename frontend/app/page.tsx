@@ -623,8 +623,12 @@ export default function HomePage() {
     const byType = safeTransactions.filter((tx) => tx.type === viewType);
 
     const filtered = !selectedCategory
-      ? byType
-      : byType.filter((tx) => tx.category === selectedCategory);
+  ? byType
+  : byType.filter((tx) =>
+      viewType === "income"
+        ? (tx.description || "ללא תיאור") === selectedCategory
+        : tx.category === selectedCategory
+    );
 
     return [...filtered].sort((a, b) => {
       const [dayA, monthA] = a.date.split("/").map(Number);
@@ -827,7 +831,11 @@ export default function HomePage() {
                   {chartData.map((entry, index) => (
                     <Cell
                       key={index}
-                      fill={categoryColors[entry.category] || "#94a3b8"}
+                      fill={
+    viewType === "income"
+      ? `hsl(140, 60%, ${35 + index * 6}%)`
+      : categoryColors[entry.category] || "#94a3b8"
+  }
                       style={{
                         cursor: "pointer",
                         opacity:
@@ -849,41 +857,6 @@ export default function HomePage() {
                 />
               </PieChart>
             </ResponsiveContainer>
-          </div>
-
-          <div className="mt-4 space-y-2">
-            {chartData.map((item) => {
-              const isSelected = selectedCategory === item.category;
-
-              return (
-                <button
-                  key={item.category}
-                  onClick={() => toggleCategory(item.category)}
-                  className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-right transition ${
-                    isSelected
-                      ? "bg-emerald-100 ring-1 ring-emerald-300"
-                      : "bg-slate-50 hover:bg-slate-100"
-                  }`}
-                >
-                  <span className="text-sm font-semibold text-slate-900">
-                    {formatCurrency(item.amount)}
-                  </span>
-
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-slate-700">
-                      {item.category}
-                    </span>
-                    <span
-                      className="h-3 w-3 rounded-full"
-                      style={{
-                        backgroundColor:
-                          categoryColors[item.category] || "#94a3b8",
-                      }}
-                    />
-                  </div>
-                </button>
-              );
-            })}
           </div>
         </div>
 
