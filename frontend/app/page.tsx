@@ -14,6 +14,7 @@ import {
   Menu,
   Home,
   FileBarChart2,
+  CalendarDays,
 } from "lucide-react";
 
 type MonthOption = {
@@ -66,6 +67,12 @@ type MeResponse = {
   family_id: number;
 };
 
+type ViewType = "expense" | "income";
+
+type SummaryCategoryWithType = SummaryCategory & {
+  resolvedType: ViewType;
+};
+
 const RADIAN = Math.PI / 180;
 
 const categories = [
@@ -87,6 +94,8 @@ const categories = [
   "הכנסות",
   "אחר",
 ];
+
+const incomeCategories = new Set(["משכורת", "החזרים", "הכנסות"]);
 
 const categoryColors: Record<string, string> = {
   "סופר וקניות לבית": "#3b82f6",
@@ -114,6 +123,10 @@ function formatCurrency(value: number) {
 
 function getDaysInMonth(month: number, year: number) {
   return new Date(year, month, 0).getDate();
+}
+
+function resolveCategoryType(category: string): ViewType {
+  return incomeCategories.has(category) ? "income" : "expense";
 }
 
 export default function HomePage() {
@@ -159,6 +172,7 @@ export default function HomePage() {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
 
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [viewType, setViewType] = useState<ViewType>("expense");
 
   async function fetchWithAuth(input: string, init?: RequestInit) {
     const token = getAccessToken();
@@ -546,7 +560,6 @@ export default function HomePage() {
 
   useEffect(() => {
     if (!isAuthenticated) return;
-
     loadMonths();
     loadSettings();
   }, [isAuthenticated]);
@@ -558,30 +571,54 @@ export default function HomePage() {
     }
   }, [selectedMonth, isAuthenticated]);
 
-  const chartData = useMemo(() => {
-    return Array.isArray(summary?.categories) ? summary.categories : [];
+  useEffect(() => {
+    setSelectedCategory(null);
+  }, [viewType]);
+
+  const normalizedCategories = useMemo<SummaryCategoryWithType[]>(() => {
+    if (!Array.isArray(summary?.categories)) return [];
+
+    return summary.categories.map((item) => ({
+      ...item,
+      resolvedType: resolveCategoryType(item.category),
+    }));
   }, [summary]);
 
-const filteredTransactions = useMemo(() => {
-  const safeTransactions = Array.isArray(transactions) ? transactions : [];
+  const chartData = useMemo(() => {
+    return normalizedCategories.filter(
+      (item) => item.resolvedType === viewType
+    );
+  }, [normalizedCategories, viewType]);
 
-  const filtered = !selectedCategory
-    ? safeTransactions
-    : safeTransactions.filter((tx) => tx.category === selectedCategory);
+  const displayedTotal = useMemo(() => {
+    if (!summary) return 0;
+    return viewType === "expense"
+      ? summary.expenses_total
+      : summary.income_total;
+  }, [summary, viewType]);
 
-  return [...filtered].sort((a, b) => {
-    const [dayA, monthA] = a.date.split("/").map(Number);
-    const [dayB, monthB] = b.date.split("/").map(Number);
+  const filteredTransactions = useMemo(() => {
+    const safeTransactions = Array.isArray(transactions) ? transactions : [];
 
-    const yearA = selectedMonth?.year ?? new Date().getFullYear();
-    const yearB = selectedMonth?.year ?? new Date().getFullYear();
+    const byType = safeTransactions.filter((tx) => tx.type === viewType);
 
-    const dateA = new Date(yearA, monthA - 1, dayA).getTime();
-    const dateB = new Date(yearB, monthB - 1, dayB).getTime();
+    const filtered = !selectedCategory
+      ? byType
+      : byType.filter((tx) => tx.category === selectedCategory);
 
-    return dateB - dateA;
-  });
-}, [transactions, selectedCategory, selectedMonth]);
+    return [...filtered].sort((a, b) => {
+      const [dayA, monthA] = a.date.split("/").map(Number);
+      const [dayB, monthB] = b.date.split("/").map(Number);
+
+      const yearA = selectedMonth?.year ?? new Date().getFullYear();
+      const yearB = selectedMonth?.year ?? new Date().getFullYear();
+
+      const dateA = new Date(yearA, monthA - 1, dayA).getTime();
+      const dateB = new Date(yearB, monthB - 1, dayB).getTime();
+
+      return dateB - dateA;
+    });
+  }, [transactions, selectedCategory, selectedMonth, viewType]);
 
   if (!authChecked || !isAuthenticated) {
     return (
@@ -667,38 +704,76 @@ const filteredTransactions = useMemo(() => {
           </button>
         </div>
 
-        <div className="rounded-[2rem] border border-green-100 bg-white p-4 shadow-[0_8px_24px_rgba(16,185,129,0.08)]">
-          <label className="mb-3 block text-right text-sm font-medium text-slate-500">
-            בחירת חודש
-          </label>
+        <div className="rounded-[2rem] border border-white/70 bg-white/90 p-4 shadow-[0_12px_30px_rgba(16,185,129,0.10)] backdrop-blur">
+          <div className="mb-3 flex items-center justify-end gap-2 text-sm font-medium text-slate-500">
+            <span>בחירת חודש</span>
+            <CalendarDays size={16} />
+          </div>
 
-          <select
-            className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2 text-right text-base font-medium text-slate-700 shadow-sm focus:border-green-400 focus:outline-none focus:ring-2 focus:ring-green-100"
-            value={
-              selectedMonth
-                ? `${selectedMonth.month}-${selectedMonth.year}`
-                : ""
-            }
-            onChange={(e) => {
-              const [month, year] = e.target.value.split("-").map(Number);
-              setSelectedMonth({ month, year });
-            }}
-          >
-            {(Array.isArray(months) ? months : []).map((m) => (
-              <option key={`${m.month}-${m.year}`} value={`${m.month}-${m.year}`}>
-                {m.month}/{m.year}
-              </option>
-            ))}
-          </select>
+          <div className="rounded-2xl border border-emerald-100 bg-gradient-to-r from-white to-emerald-50 px-3 py-2 shadow-inner">
+            <select
+              className="w-full bg-transparent px-1 py-2 text-right text-base font-semibold text-slate-700 outline-none"
+              value={
+                selectedMonth
+                  ? `${selectedMonth.month}-${selectedMonth.year}`
+                  : ""
+              }
+              onChange={(e) => {
+                const [month, year] = e.target.value.split("-").map(Number);
+                setSelectedMonth({ month, year });
+              }}
+            >
+              {(Array.isArray(months) ? months : []).map((m) => (
+                <option
+                  key={`${m.month}-${m.year}`}
+                  value={`${m.month}-${m.year}`}
+                >
+                  {m.month}/{m.year}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
-        <div className="rounded-[2rem] bg-gradient-to-br from-green-600 via-green-700 to-emerald-800 px-1 py-1 text-white shadow-[0_12px_30px_rgba(22,101,52,0.28)]">
+        <div className="rounded-[2rem] bg-white p-2 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
+          <div className="grid grid-cols-2 gap-2 rounded-[1.4rem] bg-slate-100 p-1">
+            <button
+              onClick={() => setViewType("income")}
+              className={`rounded-[1.2rem] px-4 py-3 text-sm font-bold transition ${
+                viewType === "income"
+                  ? "bg-emerald-600 text-white shadow"
+                  : "bg-transparent text-emerald-700"
+              }`}
+            >
+              הכנסות
+            </button>
+
+            <button
+              onClick={() => setViewType("expense")}
+              className={`rounded-[1.2rem] px-4 py-3 text-sm font-bold transition ${
+                viewType === "expense"
+                  ? "bg-rose-500 text-white shadow"
+                  : "bg-transparent text-rose-600"
+              }`}
+            >
+              הוצאות
+            </button>
+          </div>
+        </div>
+
+        <div
+          className={`rounded-[2rem] px-1 py-1 text-white shadow-[0_12px_30px_rgba(22,101,52,0.28)] ${
+            viewType === "expense"
+              ? "bg-gradient-to-br from-rose-500 via-rose-600 to-red-700"
+              : "bg-gradient-to-br from-green-600 via-green-700 to-emerald-800"
+          }`}
+        >
           <div className="text-center text-lg font-medium tracking-wide text-white/85">
-            סה״כ הוצאות
+            {viewType === "expense" ? "סה״כ הוצאות" : "סה״כ הכנסות"}
           </div>
 
           <div className="mt-1 text-center text-5xl font-bold leading-none">
-            {summary ? formatCurrency(summary.expenses_total) : "₪0"}
+            {formatCurrency(displayedTotal)}
           </div>
 
           <div className="mt-3 text-center text-sm text-white/75">
@@ -708,7 +783,7 @@ const filteredTransactions = useMemo(() => {
 
         <div className="rounded-2xl bg-white p-4 shadow-sm">
           <div className="mb-3 text-right text-lg font-semibold">
-            חלוקה לקטגוריות
+            {viewType === "expense" ? "חלוקה לקטגוריות" : "חלוקת הכנסות"}
           </div>
 
           <div className="h-80">
@@ -806,7 +881,11 @@ const filteredTransactions = useMemo(() => {
 
           <div className="flex items-center justify-between">
             <div className="text-sm text-slate-500">
-              {selectedCategory ? `מסונן לפי: ${selectedCategory}` : "כל הרשומות"}
+              {selectedCategory
+                ? `מסונן לפי: ${selectedCategory}`
+                : viewType === "expense"
+                ? "כל ההוצאות"
+                : "כל ההכנסות"}
             </div>
 
             {selectedCategory && (
@@ -825,7 +904,7 @@ const filteredTransactions = useMemo(() => {
             </div>
           ) : filteredTransactions.length === 0 ? (
             <div className="rounded-2xl bg-white p-3 text-right text-gray-500 shadow-sm">
-              אין רשומות לקטגוריה הזו
+              אין רשומות להצגה
             </div>
           ) : (
             filteredTransactions.map((tx) => (
