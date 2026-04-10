@@ -324,7 +324,7 @@ export default function ReportsPage() {
     setRangeEnd((prev) => prev || lastKey);
   }, [monthsInSelectedYear]);
 
-  const filteredSummaries = useMemo(() => {
+  const filteredSummariesForBalance = useMemo(() => {
     if (!rangeStart || !rangeEnd) return yearSummaries;
 
     const [startMonth, startYear] = rangeStart.split("-").map(Number);
@@ -343,10 +343,9 @@ export default function ReportsPage() {
   }, [rangeStart, rangeEnd, yearSummaries]);
 
   const annualChartData = useMemo(() => {
-    return filteredSummaries.map((summary) => {
+    return yearSummaries.map((summary) => {
       const row: ChartRow = {
         monthLabel: monthNames[summary.month] || String(summary.month),
-        expenses_total: summary.expenses_total,
       };
 
       allCategories.forEach((cat) => {
@@ -361,42 +360,28 @@ export default function ReportsPage() {
 
       return row;
     });
-  }, [filteredSummaries, allCategories]);
+  }, [yearSummaries, allCategories]);
 
   const totalRangeExpenses = useMemo(() => {
-    return filteredSummaries.reduce(
+    return filteredSummariesForBalance.reduce(
       (sum, item) => sum + Number(item.expenses_total || 0),
       0
     );
-  }, [filteredSummaries]);
+  }, [filteredSummariesForBalance]);
 
   const totalRangeIncome = useMemo(() => {
-    return filteredSummaries.reduce(
+    return filteredSummariesForBalance.reduce(
       (sum, item) => sum + Number(item.income_total || 0),
       0
     );
-  }, [filteredSummaries]);
+  }, [filteredSummariesForBalance]);
 
   const totalRangeBalance = useMemo(() => {
-    return filteredSummaries.reduce(
+    return filteredSummariesForBalance.reduce(
       (sum, item) => sum + Number(item.balance || 0),
       0
     );
-  }, [filteredSummaries]);
-
-  const mostExpensiveMonth = useMemo(() => {
-    if (!yearSummaries.length) return null;
-    return yearSummaries.reduce((max, current) =>
-      current.expenses_total > max.expenses_total ? current : max
-    );
-  }, [yearSummaries]);
-
-  const topMonthCategory = useMemo(() => {
-    if (!monthlyCategoryData.length) return null;
-    return monthlyCategoryData.reduce((max, current) =>
-      current.amount > max.amount ? current : max
-    );
-  }, [monthlyCategoryData]);
+  }, [filteredSummariesForBalance]);
 
   if (!authChecked) {
     return (
@@ -474,9 +459,9 @@ export default function ReportsPage() {
           </div>
         </div>
 
-        <div className="w-[70%] rounded-2xl border border-white/70 bg-white/90 p-3 shadow-sm">
+        <div className="rounded-2xl border border-white/70 bg-white/90 p-3 shadow-sm">
           <div className="mb-2 flex items-center justify-end gap-2 text-xs font-medium text-slate-500">
-            <span>טווח חודשים</span>
+            <span>טווח חודשים לסיכום</span>
             <CalendarRange size={14} />
           </div>
 
@@ -583,52 +568,23 @@ export default function ReportsPage() {
           </div>
         </div>
 
-        {mostExpensiveMonth && (
-          <div className="rounded-2xl bg-white p-4 text-right shadow-sm">
-            <div className="text-sm text-slate-500">החודש הכי יקר השנה</div>
-            <div className="mt-1 text-lg font-bold text-slate-900">
-              🔥 {mostExpensiveMonth.month}/{mostExpensiveMonth.year}
-            </div>
-            <div className="mt-1 text-sm text-slate-600">
-              {formatCurrency(mostExpensiveMonth.expenses_total)}
-            </div>
-          </div>
-        )}
-
-        <div className="space-y-3 rounded-2xl bg-white p-4 shadow-sm">
-          <div className="text-right font-semibold">בחירת חודש לדוח חודשי</div>
-
-          <select
-            className="w-full rounded-xl border border-slate-200 p-3 text-right"
-            value={selectedMonthKey}
-            onChange={(e) => setSelectedMonthKey(e.target.value)}
-          >
-            {monthsInSelectedYear.map((m) => (
-              <option
-                key={`${m.month}-${m.year}`}
-                value={`${m.month}-${m.year}`}
-              >
-                {m.month}/{m.year}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {topMonthCategory && (
-          <div className="rounded-2xl bg-white p-4 text-right shadow-sm">
-            <div className="text-sm text-slate-500">הקטגוריה המובילה בחודש שנבחר</div>
-            <div className="mt-1 text-lg font-bold text-slate-900">
-              {topMonthCategory.category}
-            </div>
-            <div className="mt-1 text-sm text-slate-600">
-              {formatCurrency(topMonthCategory.amount)}
-            </div>
-          </div>
-        )}
-
         <div className="rounded-2xl bg-white p-4 shadow-sm">
-          <div className="mb-4 text-right text-lg font-semibold">
-            התפלגות חודשית לפי קטגוריה
+          <div className="mb-4 flex items-center justify-between">
+            <select
+              className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700 outline-none"
+              value={selectedMonthKey}
+              onChange={(e) => setSelectedMonthKey(e.target.value)}
+            >
+              {monthsInSelectedYear.map((m) => (
+                <option key={`${m.month}-${m.year}`} value={`${m.month}-${m.year}`}>
+                  {m.month}/{m.year}
+                </option>
+              ))}
+            </select>
+
+            <div className="text-right text-lg font-semibold">
+              התפלגות חודשית לפי קטגוריה
+            </div>
           </div>
 
           <div className="h-80">
@@ -688,8 +644,22 @@ export default function ReportsPage() {
         </div>
 
         <div className="rounded-2xl bg-white p-4 shadow-sm">
-          <div className="mb-4 text-right text-lg font-semibold">
-            דוח חודשי לפי קטגוריה - עמודות
+          <div className="mb-4 flex items-center justify-between">
+            <select
+              className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700 outline-none"
+              value={selectedMonthKey}
+              onChange={(e) => setSelectedMonthKey(e.target.value)}
+            >
+              {monthsInSelectedYear.map((m) => (
+                <option key={`${m.month}-${m.year}`} value={`${m.month}-${m.year}`}>
+                  {m.month}/{m.year}
+                </option>
+              ))}
+            </select>
+
+            <div className="text-right text-lg font-semibold">
+              דוח חודשי לפי קטגוריה - עמודות
+            </div>
           </div>
 
           <div className="h-80">
