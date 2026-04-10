@@ -585,10 +585,30 @@ export default function HomePage() {
   }, [summary]);
 
   const chartData = useMemo(() => {
-    return normalizedCategories.filter(
-      (item) => item.resolvedType === viewType
-    );
-  }, [normalizedCategories, viewType]);
+  if (viewType === "expense") {
+    return Array.isArray(summary?.categories)
+      ? summary.categories.filter(
+          (item) => !incomeCategories.has(item.category)
+        )
+      : [];
+  }
+
+  const incomeTransactions = (Array.isArray(transactions) ? transactions : []).filter(
+    (tx) => tx.type === "income"
+  );
+
+  const grouped = new Map<string, number>();
+
+  for (const tx of incomeTransactions) {
+    const key = tx.description || "ללא תיאור";
+    grouped.set(key, (grouped.get(key) || 0) + tx.amount);
+  }
+
+  return Array.from(grouped.entries()).map(([category, amount]) => ({
+    category,
+    amount,
+  }));
+}, [viewType, summary, transactions]);
 
   const displayedTotal = useMemo(() => {
     if (!summary) return 0;
