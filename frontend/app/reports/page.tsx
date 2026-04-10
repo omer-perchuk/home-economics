@@ -86,10 +86,6 @@ function monthRangeKey(month: number, year: number) {
   return `${year}-${String(month).padStart(2, "0")}`;
 }
 
-function monthDisplay(month: number, year: number) {
-  return `${month}/${year}`;
-}
-
 export default function ReportsPage() {
   const backendUrl =
     process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -347,12 +343,10 @@ export default function ReportsPage() {
   }, [rangeStart, rangeEnd, yearSummaries]);
 
   const annualChartData = useMemo(() => {
-    return yearSummaries.map((summary) => {
+    return filteredSummaries.map((summary) => {
       const row: ChartRow = {
         monthLabel: monthNames[summary.month] || String(summary.month),
         expenses_total: summary.expenses_total,
-        income_total: summary.income_total,
-        balance: summary.balance,
       };
 
       allCategories.forEach((cat) => {
@@ -367,7 +361,7 @@ export default function ReportsPage() {
 
       return row;
     });
-  }, [yearSummaries, allCategories]);
+  }, [filteredSummaries, allCategories]);
 
   const totalRangeExpenses = useMemo(() => {
     return filteredSummaries.reduce(
@@ -403,28 +397,6 @@ export default function ReportsPage() {
       current.amount > max.amount ? current : max
     );
   }, [monthlyCategoryData]);
-
-  const rangeLabel = useMemo(() => {
-    if (!rangeStart || !rangeEnd) return "כל השנה";
-
-    const [startMonth, startYear] = rangeStart.split("-").map(Number);
-    const [endMonth, endYear] = rangeEnd.split("-").map(Number);
-
-    const startKey = monthRangeKey(startMonth, startYear);
-    const endKey = monthRangeKey(endMonth, endYear);
-
-    if (startKey <= endKey) {
-      return `${monthDisplay(startMonth, startYear)} - ${monthDisplay(
-        endMonth,
-        endYear
-      )}`;
-    }
-
-    return `${monthDisplay(endMonth, endYear)} - ${monthDisplay(
-      startMonth,
-      startYear
-    )}`;
-  }, [rangeStart, rangeEnd]);
 
   if (!authChecked) {
     return (
@@ -475,34 +447,46 @@ export default function ReportsPage() {
           </button>
         </div>
 
-        <div className="space-y-4 rounded-2xl bg-white p-4 shadow-sm">
-          <div className="text-right font-semibold">בחירת שנה</div>
-          <select
-            className="w-full rounded-xl border border-slate-200 p-3 text-right"
-            value={selectedYear ?? ""}
-            onChange={(e) => setSelectedYear(Number(e.target.value))}
-          >
-            {availableYears.map((year) => (
-              <option key={year} value={year}>
-                {year}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="rounded-[2rem] border border-white/70 bg-white/90 p-4 shadow-[0_12px_30px_rgba(16,185,129,0.10)] backdrop-blur">
-          <div className="mb-3 flex items-center justify-end gap-2 text-sm font-medium text-slate-500">
-            <span>טווח חודשים לסיכום</span>
-            <CalendarRange size={16} />
+        <div className="grid grid-cols-3 gap-4">
+          <div className="rounded-3xl bg-white p-4 text-center shadow-md">
+            <div className="text-sm text-slate-500">סה״כ הוצאות</div>
+            <div className="mt-2 text-lg font-bold text-red-500">
+              {formatCurrency(totalRangeExpenses)}
+            </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-2xl border border-emerald-100 bg-gradient-to-r from-white to-emerald-50 px-3 py-2 shadow-inner">
-              <div className="mb-1 text-right text-xs font-medium text-slate-500">
+          <div className="rounded-3xl bg-white p-4 text-center shadow-md">
+            <div className="text-sm text-slate-500">סה״כ הכנסות</div>
+            <div className="mt-2 text-lg font-bold text-green-600">
+              {formatCurrency(totalRangeIncome)}
+            </div>
+          </div>
+
+          <div className="rounded-3xl bg-white p-4 text-center shadow-md">
+            <div className="text-sm text-slate-500">מאזן</div>
+            <div
+              className={`mt-2 text-lg font-bold ${
+                totalRangeBalance >= 0 ? "text-emerald-600" : "text-rose-500"
+              }`}
+            >
+              {formatCurrency(totalRangeBalance)}
+            </div>
+          </div>
+        </div>
+
+        <div className="w-[70%] rounded-2xl border border-white/70 bg-white/90 p-3 shadow-sm">
+          <div className="mb-2 flex items-center justify-end gap-2 text-xs font-medium text-slate-500">
+            <span>טווח חודשים</span>
+            <CalendarRange size={14} />
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div className="rounded-xl border border-emerald-100 bg-gradient-to-r from-white to-emerald-50 px-2 py-2">
+              <div className="mb-1 text-right text-[11px] font-medium text-slate-500">
                 מחודש
               </div>
               <select
-                className="w-full bg-transparent px-1 py-2 text-right text-base font-semibold text-slate-700 outline-none"
+                className="w-full bg-transparent px-1 py-1 text-right text-sm font-semibold text-slate-700 outline-none"
                 value={rangeStart}
                 onChange={(e) => setRangeStart(e.target.value)}
               >
@@ -517,12 +501,12 @@ export default function ReportsPage() {
               </select>
             </div>
 
-            <div className="rounded-2xl border border-emerald-100 bg-gradient-to-r from-white to-emerald-50 px-3 py-2 shadow-inner">
-              <div className="mb-1 text-right text-xs font-medium text-slate-500">
+            <div className="rounded-xl border border-emerald-100 bg-gradient-to-r from-white to-emerald-50 px-2 py-2">
+              <div className="mb-1 text-right text-[11px] font-medium text-slate-500">
                 עד חודש
               </div>
               <select
-                className="w-full bg-transparent px-1 py-2 text-right text-base font-semibold text-slate-700 outline-none"
+                className="w-full bg-transparent px-1 py-1 text-right text-sm font-semibold text-slate-700 outline-none"
                 value={rangeEnd}
                 onChange={(e) => setRangeEnd(e.target.value)}
               >
@@ -537,81 +521,25 @@ export default function ReportsPage() {
               </select>
             </div>
           </div>
-
-          <div className="mt-3 text-right text-sm text-slate-500">
-            מוצג עבור:{" "}
-            <span className="font-semibold text-slate-700">{rangeLabel}</span>
-          </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-3">
-          <div className="rounded-2xl bg-white p-3 text-center shadow-sm">
-            <div className="text-xs text-slate-500">סה״כ הוצאות</div>
-            <div className="mt-1 text-sm font-bold text-red-500">
-              {formatCurrency(totalRangeExpenses)}
-            </div>
-          </div>
-
-          <div className="rounded-2xl bg-white p-3 text-center shadow-sm">
-            <div className="text-xs text-slate-500">סה״כ הכנסות</div>
-            <div className="mt-1 text-sm font-bold text-green-600">
-              {formatCurrency(totalRangeIncome)}
-            </div>
-          </div>
-
-          <div className="rounded-2xl bg-white p-3 text-center shadow-sm">
-            <div className="text-xs text-slate-500">מאזן</div>
-            <div
-              className={`mt-1 text-sm font-bold ${
-                totalRangeBalance >= 0 ? "text-emerald-600" : "text-rose-500"
-              }`}
+        <div className="rounded-2xl bg-white p-4 shadow-sm">
+          <div className="mb-4 flex items-center justify-between">
+            <select
+              className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700 outline-none"
+              value={selectedYear ?? ""}
+              onChange={(e) => setSelectedYear(Number(e.target.value))}
             >
-              {formatCurrency(totalRangeBalance)}
+              {availableYears.map((year) => (
+                <option key={year} value={year}>
+                  {year}
+                </option>
+              ))}
+            </select>
+
+            <div className="text-right text-lg font-semibold">
+              דוח הוצאות שנתי לפי קטגוריות
             </div>
-          </div>
-        </div>
-
-        {mostExpensiveMonth && (
-          <div className="rounded-2xl bg-white p-4 text-right shadow-sm">
-            <div className="text-sm text-slate-500">החודש הכי יקר השנה</div>
-            <div className="mt-1 text-lg font-bold text-slate-900">
-              🔥 {mostExpensiveMonth.month}/{mostExpensiveMonth.year}
-            </div>
-            <div className="mt-1 text-sm text-slate-600">
-              {formatCurrency(mostExpensiveMonth.expenses_total)}
-            </div>
-          </div>
-        )}
-
-        <div className="rounded-2xl bg-white p-4 shadow-sm">
-          <div className="mb-4 text-right text-lg font-semibold">
-            סה״כ הוצאות לפי חודש
-          </div>
-
-          <div className="h-72">
-            {loading ? (
-              <div className="text-center text-gray-500">טוען...</div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={annualChartData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="monthLabel" />
-                  <YAxis />
-                  <Tooltip formatter={(value) => formatCurrency(Number(value))} />
-                  <Bar
-                    dataKey="expenses_total"
-                    fill="#16a34a"
-                    radius={[10, 10, 0, 0]}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        </div>
-
-        <div className="rounded-2xl bg-white p-4 shadow-sm">
-          <div className="mb-4 text-right text-lg font-semibold">
-            דוח הוצאות שנתי לפי קטגוריות
           </div>
 
           <div className="h-80">
@@ -655,6 +583,18 @@ export default function ReportsPage() {
           </div>
         </div>
 
+        {mostExpensiveMonth && (
+          <div className="rounded-2xl bg-white p-4 text-right shadow-sm">
+            <div className="text-sm text-slate-500">החודש הכי יקר השנה</div>
+            <div className="mt-1 text-lg font-bold text-slate-900">
+              🔥 {mostExpensiveMonth.month}/{mostExpensiveMonth.year}
+            </div>
+            <div className="mt-1 text-sm text-slate-600">
+              {formatCurrency(mostExpensiveMonth.expenses_total)}
+            </div>
+          </div>
+        )}
+
         <div className="space-y-3 rounded-2xl bg-white p-4 shadow-sm">
           <div className="text-right font-semibold">בחירת חודש לדוח חודשי</div>
 
@@ -676,9 +616,7 @@ export default function ReportsPage() {
 
         {topMonthCategory && (
           <div className="rounded-2xl bg-white p-4 text-right shadow-sm">
-            <div className="text-sm text-slate-500">
-              הקטגוריה המובילה בחודש שנבחר
-            </div>
+            <div className="text-sm text-slate-500">הקטגוריה המובילה בחודש שנבחר</div>
             <div className="mt-1 text-lg font-bold text-slate-900">
               {topMonthCategory.category}
             </div>
