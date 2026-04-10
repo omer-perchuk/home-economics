@@ -307,22 +307,34 @@ export default function ReportsPage() {
       .sort((a, b) => a.month - b.month);
   }, [months, selectedYear]);
 
-  useEffect(() => {
-    if (!monthsInSelectedYear.length) {
-      setRangeStart("");
-      setRangeEnd("");
-      return;
-    }
+useEffect(() => {
+  if (!monthsInSelectedYear.length) {
+    setRangeStart("");
+    setRangeEnd("");
+    return;
+  }
 
-    const first = monthsInSelectedYear[0];
-    const last = monthsInSelectedYear[monthsInSelectedYear.length - 1];
+  const now = new Date();
+  const currentMonth = now.getMonth() + 1;
+  const currentYear = now.getFullYear();
 
-    const firstKey = `${first.month}-${first.year}`;
-    const lastKey = `${last.month}-${last.year}`;
+  const currentMonthExists = monthsInSelectedYear.find(
+    (m) => m.month === currentMonth && m.year === currentYear
+  );
 
-    setRangeStart((prev) => prev || firstKey);
-    setRangeEnd((prev) => prev || lastKey);
-  }, [monthsInSelectedYear]);
+  if (currentMonthExists) {
+    const currentKey = `${currentMonthExists.month}-${currentMonthExists.year}`;
+    setRangeStart(currentKey);
+    setRangeEnd(currentKey);
+    return;
+  }
+
+  const latest = monthsInSelectedYear[monthsInSelectedYear.length - 1];
+  const latestKey = `${latest.month}-${latest.year}`;
+
+  setRangeStart(latestKey);
+  setRangeEnd(latestKey);
+}, [monthsInSelectedYear]);
 
   const filteredSummariesForBalance = useMemo(() => {
     if (!rangeStart || !rangeEnd) return yearSummaries;

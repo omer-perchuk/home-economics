@@ -762,21 +762,21 @@ export default function HomePage() {
         </div>
 
         <div
-          className={`rounded-[2rem] px-1 py-1 text-white shadow-[0_12px_30px_rgba(22,101,52,0.28)] ${
-            viewType === "expense"
-              ? "bg-gradient-to-br from-rose-500 via-rose-600 to-red-700"
-              : "bg-gradient-to-br from-green-600 via-green-700 to-emerald-800"
-          }`}
+          className="rounded-[2rem] bg-white px-4 py-4 shadow-md border border-slate-100"
         >
-          <div className="text-center text-lg font-medium tracking-wide text-white/85">
+          <div className="text-center text-lg font-medium tracking-wide text-slate-500">
             {viewType === "expense" ? "סה״כ הוצאות" : "סה״כ הכנסות"}
           </div>
 
-          <div className="mt-1 text-center text-5xl font-bold leading-none">
+          <div
+              className={`mt-1 text-center text-5xl font-bold leading-none ${
+                viewType === "expense" ? "text-red-500" : "text-emerald-600"
+              }`}
+          >
             {formatCurrency(displayedTotal)}
           </div>
 
-          <div className="mt-3 text-center text-sm text-white/75">
+          <div className="mt-3 text-center text-sm text-slate-400">
             {selectedMonth ? `${selectedMonth.month}/${selectedMonth.year}` : ""}
           </div>
         </div>
