@@ -53,7 +53,7 @@ print("=== WHATSAPP ROUTE LOADED ===")
 
 router = APIRouter()
 
-DASHBOARD_URL = "https://aws-migration-test.d11fqx2zyfwk68.amplifyapp.com"
+DASHBOARD_URL = "https://main.d11fqx2zyfwk68.amplifyapp.com"
 
 META_ACCESS_TOKEN = os.getenv("META_ACCESS_TOKEN", "")
 META_VERIFY_TOKEN = os.getenv("META_VERIFY_TOKEN", "")
@@ -119,6 +119,48 @@ async def send_whatsapp_message(to_number: str, message: str) -> None:
         print(f"Sent WhatsApp reply to {digits}: {message}")
     except Exception as e:
         print(f"Failed to send WhatsApp reply to {digits}: {e}")
+
+
+async def send_whatsapp_cta_button(to_number: str, body_text: str, url: str) -> None:
+    if not META_ACCESS_TOKEN or not META_PHONE_NUMBER_ID:
+        print("Meta credentials are missing. CTA button was not sent.")
+        return
+
+    digits = "".join(ch for ch in to_number if ch.isdigit())
+    if not digits:
+        print(f"Invalid destination number: {to_number}")
+        return
+
+    api_url = f"https://graph.facebook.com/v22.0/{META_PHONE_NUMBER_ID}/messages"
+    headers = {
+        "Authorization": f"Bearer {META_ACCESS_TOKEN}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": digits,
+        "type": "interactive",
+        "interactive": {
+            "type": "cta_url",
+            "body": {"text": body_text},
+            "action": {
+                "name": "cta_url",
+                "parameters": {
+                    "display_text": "כניסה לחשבון",
+                    "url": url,
+                },
+            },
+        },
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            response = await client.post(api_url, headers=headers, json=payload)
+            print("=== META CTA BUTTON STATUS ===", response.status_code)
+            response.raise_for_status()
+        print(f"Sent CTA button to {digits}")
+    except Exception as e:
+        print(f"Failed to send CTA button to {digits}: {e}")
 
 
 def build_empty_ok_response() -> Response:
@@ -454,14 +496,8 @@ async def whatsapp_webhook(
             family_id=family.id,
         )
 
-        background_tasks.add_task(
-            send_whatsapp_message,
-            sender,
-            f"""{formatted_summary}
-
-🔐 כניסה מאובטחת לאתר:
-{magic_link}"""
-        )
+        background_tasks.add_task(send_whatsapp_message, sender, formatted_summary)
+        background_tasks.add_task(send_whatsapp_cta_button, sender, "לחץ להיכנס לאתר 👇", magic_link)
         return build_empty_ok_response()
 
     # ===============================
@@ -660,14 +696,8 @@ async def whatsapp_webhook(
             family_id=family.id,
         )
 
-        background_tasks.add_task(
-            send_whatsapp_message,
-            sender,
-            f"""{formatted}
-
-🔐 כניסה מאובטחת לאתר:
-{magic_link}"""
-        )
+        background_tasks.add_task(send_whatsapp_message, sender, formatted)
+        background_tasks.add_task(send_whatsapp_cta_button, sender, "לחץ להיכנס לאתר 👇", magic_link)
         return build_empty_ok_response()
 
     # ===============================
@@ -695,12 +725,7 @@ async def whatsapp_webhook(
             family_id=family.id,
         )
 
-        background_tasks.add_task(
-            send_whatsapp_message,
-            sender,
-            f"""🔐 כניסה מאובטחת לאתר:
-{magic_link}"""
-        )
+        background_tasks.add_task(send_whatsapp_cta_button, sender, "לחץ להיכנס לאתר 👇", magic_link)
         return build_empty_ok_response()
 
     # ===============================
@@ -747,14 +772,8 @@ async def whatsapp_webhook(
                 family_id=family.id,
             )
 
-            background_tasks.add_task(
-                send_whatsapp_message,
-                sender,
-                f"""{formatted}
-
-🔐 כניסה מאובטחת לאתר:
-{magic_link}"""
-            )
+            background_tasks.add_task(send_whatsapp_message, sender, formatted)
+            background_tasks.add_task(send_whatsapp_cta_button, sender, "לחץ להיכנס לאתר 👇", magic_link)
             return build_empty_ok_response()
 
         if intent == "site":
@@ -763,12 +782,7 @@ async def whatsapp_webhook(
                 family_id=family.id,
             )
 
-            background_tasks.add_task(
-                send_whatsapp_message,
-                sender,
-                f"""🔐 כניסה מאובטחת לאתר:
-{magic_link}"""
-            )
+            background_tasks.add_task(send_whatsapp_cta_button, sender, "לחץ להיכנס לאתר 👇", magic_link)
             return build_empty_ok_response()
 
         if intent == "help":
