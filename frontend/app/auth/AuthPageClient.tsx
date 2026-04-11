@@ -16,6 +16,9 @@ export default function AuthPageClient() {
     hasRunRef.current = true;
 
     const token = searchParams.get("token");
+    const redirectParam = searchParams.get("redirect");
+    const redirectTarget =
+      redirectParam && redirectParam.startsWith("/") ? redirectParam : "/";
 
     if (!token) {
       setError("הגישה לאתר אפשרית רק דרך קישור מהבוט.");
@@ -47,7 +50,7 @@ export default function AuthPageClient() {
         setMessage("הכניסה הצליחה, מעביר...");
 
         setTimeout(() => {
-          router.replace("/");
+          router.replace(redirectTarget);
         }, 800);
       })
       .catch((err) => {

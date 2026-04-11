@@ -741,10 +741,21 @@ async def whatsapp_webhook(
     # פקודת עזרה
     # ===============================
     if command == "help":
+        guide_link = create_magic_link(
+            user_id=user.id,
+            family_id=family.id,
+            redirect_to="/guide",
+        )
         background_tasks.add_task(
             send_whatsapp_message,
             sender,
             format_help_message()
+        )
+        background_tasks.add_task(
+            send_whatsapp_cta_button,
+            sender,
+            "פתח את מדריך ההתחלה 👇",
+            guide_link,
         )
         return build_empty_ok_response()
 
@@ -794,10 +805,21 @@ async def whatsapp_webhook(
             return build_empty_ok_response()
 
         if intent == "help":
+            guide_link = create_magic_link(
+                user_id=user.id,
+                family_id=family.id,
+                redirect_to="/guide",
+            )
             background_tasks.add_task(
                 send_whatsapp_message,
                 sender,
                 format_help_message()
+            )
+            background_tasks.add_task(
+                send_whatsapp_cta_button,
+                sender,
+                "פתח את מדריך ההתחלה 👇",
+                guide_link,
             )
             return build_empty_ok_response()
 

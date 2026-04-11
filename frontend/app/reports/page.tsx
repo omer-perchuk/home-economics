@@ -14,7 +14,7 @@ import {
   PieChart,
   Pie,
 } from "recharts";
-import { Home, Menu, FileBarChart2, CalendarRange } from "lucide-react";
+import { Home, Menu, FileBarChart2, CalendarRange, BookOpen } from "lucide-react";
 
 type MonthOption = {
   year: number;
@@ -430,6 +430,15 @@ useEffect(() => {
             >
               <FileBarChart2 size={20} />
               דוחות
+            </Link>
+
+            <Link
+              href="/guide"
+              onClick={() => setMenuOpen(false)}
+              className="flex items-center gap-2 text-lg"
+            >
+              <BookOpen size={20} />
+              מדריך
             </Link>
           </div>
         </>
