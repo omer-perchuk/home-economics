@@ -13,7 +13,7 @@ from app.services.merchant_memory_service import (
     upsert_memory,
     find_memory_candidates,
 )
-from app.services.rule_based_categorizer import categorize_by_keywords
+from app.services.rule_based_categorizer import categorize_by_keywords, ALLOWED_CATEGORIES
 from app.services.message_intent_service import classify_message_intent
 from app.services.magic_link_service import create_magic_link
 from app.services.ai_categorizer import categorize_transaction_text
@@ -146,7 +146,7 @@ async def send_whatsapp_cta_button(to_number: str, body_text: str, url: str) -> 
             "action": {
                 "name": "cta_url",
                 "parameters": {
-                    "display_text": "כניסה לחשבון",
+                    "display_text": "Home Economics",
                     "url": url,
                 },
             },
@@ -256,10 +256,23 @@ async def whatsapp_webhook(
         command = "delete"
     elif message in ["עזרה", "help"]:
         command = "help"
+    elif message in ["ביטול", "בטל", "cancel", "יציאה", "חזרה", "עצור", "דיי"]:
+        command = "cancel"
     else:
         command = detect_command(message)
 
     print("=== DETECTED COMMAND ===", command)
+
+    # ===============================
+    # ביטול — יציאה מכל תהליך
+    # ===============================
+    if command == "cancel":
+        if user_state:
+            clear_user_state(sender)
+            background_tasks.add_task(send_whatsapp_message, sender, "✅ הפעולה בוטלה.")
+        else:
+            background_tasks.add_task(send_whatsapp_message, sender, "אין פעולה פעילה לביטול.")
+        return build_empty_ok_response()
 
     # ===============================
     # אישור / דחיית בקשת הצטרפות לפי 1 / 2
@@ -505,115 +518,107 @@ async def whatsapp_webhook(
     # ===============================
     if user_state and user_state.get("action") == "update_select":
         if not message.isdigit():
-            background_tasks.add_task(
-                send_whatsapp_message,
-                sender,
-                "✏️ שלח מספר רשומה לעדכון."
-            )
+            background_tasks.add_task(send_whatsapp_message, sender, "✏️ שלח מספר רשומה לעדכון, או 'ביטול' לביטול.")
             return build_empty_ok_response()
 
         selected_index = int(message) - 1
         transaction_ids = user_state.get("transaction_ids", [])
 
         if selected_index < 0 or selected_index >= len(transaction_ids):
-            background_tasks.add_task(
-                send_whatsapp_message,
-                sender,
-                "המספר לא תקין."
-            )
+            background_tasks.add_task(send_whatsapp_message, sender, "המספר לא תקין. נסה שוב או שלח 'ביטול'.")
             return build_empty_ok_response()
 
         transaction_id = transaction_ids[selected_index]
+        transaction = db.query(Transaction).filter(Transaction.id == transaction_id).first()
 
-        set_user_state(
-            sender,
-            {
-                "action": "update_new_value",
-                "transaction_id": transaction_id,
-            }
-        )
+        if not transaction:
+            clear_user_state(sender)
+            background_tasks.add_task(send_whatsapp_message, sender, "לא נמצאה הרשומה.")
+            return build_empty_ok_response()
 
+        set_user_state(sender, {"action": "update_field_select", "transaction_id": transaction_id})
         background_tasks.add_task(
             send_whatsapp_message,
             sender,
-            "✏️ שלח ערך חדש.\nלדוגמה: ארומה 42"
+            f"✏️ {transaction.description} — {format_short_amount(transaction.amount)} ₪\n\nמה לשנות?\n1. שם\n2. מחיר\n3. קטגוריה"
         )
         return build_empty_ok_response()
 
     # ===============================
-    # עדכון - קבלת ערך חדש
+    # עדכון - בחירת שדה
     # ===============================
-    if user_state and user_state.get("action") == "update_new_value":
+    if user_state and user_state.get("action") == "update_field_select":
         transaction_id = user_state.get("transaction_id")
-
-        transaction = (
-            db.query(Transaction)
-            .filter(Transaction.id == transaction_id)
-            .first()
-        )
+        transaction = db.query(Transaction).filter(Transaction.id == transaction_id).first()
 
         if not transaction:
             clear_user_state(sender)
-            background_tasks.add_task(
-                send_whatsapp_message,
-                sender,
-                "לא נמצאה רשומה לעדכון."
-            )
+            background_tasks.add_task(send_whatsapp_message, sender, "לא נמצאה הרשומה.")
             return build_empty_ok_response()
 
-        ai_result = categorize_transaction_text(raw_message)
-
-        if ai_result["amount"] <= 0:
-            background_tasks.add_task(
-                send_whatsapp_message,
-                sender,
-                "לא הצלחתי להבין. שלח למשל: שופרסל 280"
-            )
+        if message in ["1", "שם", "שנה שם", "תיאור"]:
+            field = "description"
+            prompt = "✏️ שלח את השם החדש:"
+        elif message in ["2", "מחיר", "סכום", "כמה"]:
+            field = "amount"
+            prompt = "💰 שלח את המחיר החדש (מספר בלבד):"
+        elif message in ["3", "קטגוריה", "סוג"]:
+            field = "category"
+            categories_list = "\n".join([f"{i+1}. {cat}" for i, cat in enumerate(ALLOWED_CATEGORIES)])
+            prompt = f"📂 בחר קטגוריה (שלח מספר):\n{categories_list}"
+        else:
+            background_tasks.add_task(send_whatsapp_message, sender, "שלח 1 לשם, 2 למחיר, 3 לקטגוריה — או 'ביטול'.")
             return build_empty_ok_response()
 
-        transaction.original_text = ai_result["original_text"]
-        transaction.description = ai_result["description"]
-        transaction.amount = ai_result["amount"]
-        transaction.type = ai_result["type"]
-        transaction.category = ai_result["category"]
+        set_user_state(sender, {"action": "update_field_value", "transaction_id": transaction_id, "field": field})
+        background_tasks.add_task(send_whatsapp_message, sender, prompt)
+        return build_empty_ok_response()
+
+    # ===============================
+    # עדכון - קבלת הערך החדש
+    # ===============================
+    if user_state and user_state.get("action") == "update_field_value":
+        transaction_id = user_state.get("transaction_id")
+        field = user_state.get("field")
+        transaction = db.query(Transaction).filter(Transaction.id == transaction_id).first()
+
+        if not transaction:
+            clear_user_state(sender)
+            background_tasks.add_task(send_whatsapp_message, sender, "לא נמצאה הרשומה.")
+            return build_empty_ok_response()
+
+        if field == "description":
+            transaction.description = raw_message.strip()
+
+        elif field == "amount":
+            import re as _re
+            cleaned = _re.sub(r"[^\d.]", "", raw_message)
+            try:
+                transaction.amount = float(cleaned)
+            except Exception:
+                background_tasks.add_task(send_whatsapp_message, sender, "לא הבנתי את המחיר. שלח מספר בלבד, למשל: 85")
+                return build_empty_ok_response()
+
+        elif field == "category":
+            if message.isdigit():
+                idx = int(message) - 1
+                if 0 <= idx < len(ALLOWED_CATEGORIES):
+                    transaction.category = ALLOWED_CATEGORIES[idx]
+                else:
+                    background_tasks.add_task(send_whatsapp_message, sender, f"מספר לא תקין. שלח מספר בין 1 ל-{len(ALLOWED_CATEGORIES)}.")
+                    return build_empty_ok_response()
+            else:
+                matched = next((cat for cat in ALLOWED_CATEGORIES if raw_message.strip() in cat or cat in raw_message.strip()), None)
+                if matched:
+                    transaction.category = matched
+                else:
+                    categories_list = "\n".join([f"{i+1}. {cat}" for i, cat in enumerate(ALLOWED_CATEGORIES)])
+                    background_tasks.add_task(send_whatsapp_message, sender, f"לא זיהיתי קטגוריה. שלח מספר:\n{categories_list}")
+                    return build_empty_ok_response()
 
         db.commit()
-
-        merchant_key = extract_merchant_key(raw_message)
-
-        if merchant_key:
-            upsert_memory(
-                db,
-                scope_type="user",
-                scope_id=user.id,
-                merchant_key=merchant_key,
-                category=transaction.category,
-                tx_type=transaction.type,
-            )
-            upsert_memory(
-                db,
-                scope_type="family",
-                scope_id=family.id,
-                merchant_key=merchant_key,
-                category=transaction.category,
-                tx_type=transaction.type,
-            )
-            upsert_memory(
-                db,
-                scope_type="global",
-                scope_id=None,
-                merchant_key=merchant_key,
-                category=transaction.category,
-                tx_type=transaction.type,
-            )
-
         clear_user_state(sender)
-
-        background_tasks.add_task(
-            send_whatsapp_message,
-            sender,
-            format_updated_transaction_message(transaction)
-        )
+        background_tasks.add_task(send_whatsapp_message, sender, format_updated_transaction_message(transaction))
         return build_empty_ok_response()
 
     # ===============================
@@ -704,16 +709,20 @@ async def whatsapp_webhook(
     # פקודת סיכום
     # ===============================
     if command == "summary":
-        set_user_state(
-            sender,
-            {"action": "awaiting_summary_month"}
-        )
+        from datetime import datetime as _dt
+        parsed_month = parse_month_input(raw_message)
+        if parsed_month:
+            month, year = parsed_month
+        else:
+            now = _dt.utcnow()
+            month, year = now.month, now.year
 
-        background_tasks.add_task(
-            send_whatsapp_message,
-            sender,
-            "📅 איזה חודש?\nלמשל: 3/2026 או מרץ 2026"
-        )
+        summary = get_month_summary(db, month, year, family.id)
+        formatted_summary = format_summary_for_whatsapp_short(summary)
+        magic_link = create_magic_link(user_id=user.id, family_id=family.id)
+
+        background_tasks.add_task(send_whatsapp_message, sender, f"{formatted_summary}\n\n💡 לחודש אחר שלח: סיכום 3/2025")
+        background_tasks.add_task(send_whatsapp_cta_button, sender, "לחץ להיכנס לאתר 👇", magic_link)
         return build_empty_ok_response()
 
     # ===============================
@@ -752,15 +761,14 @@ async def whatsapp_webhook(
         print("=== MESSAGE INTENT ===", intent)
 
         if intent == "summary":
-            set_user_state(
-                sender,
-                {"action": "awaiting_summary_month"}
-            )
-            background_tasks.add_task(
-                send_whatsapp_message,
-                sender,
-                "📅 איזה חודש?\nלמשל: 3/2026 או מרץ 2026"
-            )
+            from datetime import datetime as _dt
+            now = _dt.utcnow()
+            summary = get_month_summary(db, now.month, now.year, family.id)
+            formatted_summary = format_summary_for_whatsapp_short(summary)
+            magic_link = create_magic_link(user_id=user.id, family_id=family.id)
+
+            background_tasks.add_task(send_whatsapp_message, sender, f"{formatted_summary}\n\n💡 לחודש אחר שלח: סיכום 3/2025")
+            background_tasks.add_task(send_whatsapp_cta_button, sender, "לחץ להיכנס לאתר 👇", magic_link)
             return build_empty_ok_response()
 
         if intent == "list":
