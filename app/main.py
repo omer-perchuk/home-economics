@@ -132,7 +132,6 @@ def debug_families(db: Session = Depends(get_db)):
 
         result.append({
             "family": f.name,
-            "twilio_number": f.twilio_whatsapp_number,
             "members": [
                 {
                     "name": u.name,
