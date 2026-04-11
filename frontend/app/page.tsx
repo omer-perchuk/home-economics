@@ -15,6 +15,7 @@ import {
   Home,
   FileBarChart2,
   CalendarDays,
+  BookOpen,
 } from "lucide-react";
 
 type MonthOption = {
@@ -679,6 +680,15 @@ export default function HomePage() {
             >
               <FileBarChart2 size={20} />
               דוחות
+            </Link>
+
+            <Link
+              href="/guide"
+              onClick={() => setMenuOpen(false)}
+              className="flex items-center gap-2 text-lg"
+            >
+              <BookOpen size={20} />
+              מדריך
             </Link>
           </div>
         </>
