@@ -1,6 +1,7 @@
 from collections import defaultdict
 from datetime import datetime
 from typing import Optional
+import re
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -8,19 +9,14 @@ from sqlalchemy.orm import Session
 from app.db.models import Transaction
 
 
+def _normalize_year(year: int) -> int:
+    if year < 100:
+        return 2000 + year
+    return year
+
+
 def parse_month_input(text: str):
-    text = text.strip()
-
-    try:
-        if "/" in text:
-            month_str, year_str = text.split("/")
-            month = int(month_str)
-            year = int(year_str)
-
-            if 1 <= month <= 12:
-                return month, year
-    except Exception:
-        pass
+    text = text.strip().lower()
 
     month_names = {
         "ינואר": 1,
@@ -37,11 +33,23 @@ def parse_month_input(text: str):
         "דצמבר": 12,
     }
 
-    parts = text.split()
-    if len(parts) == 2:
-        month_name, year_str = parts
-        if month_name in month_names and year_str.isdigit():
-            return month_names[month_name], int(year_str)
+    numeric_match = re.search(r"\b(1[0-2]|0?[1-9])[/.](\d{2}|\d{4})\b", text)
+    if numeric_match:
+        month = int(numeric_match.group(1))
+        year = _normalize_year(int(numeric_match.group(2)))
+        return month, year
+
+    month_name_pattern = "|".join(
+        sorted((re.escape(name) for name in month_names.keys()), key=len, reverse=True)
+    )
+    month_name_match = re.search(
+        rf"\b({month_name_pattern})\s+(\d{{2}}|\d{{4}})\b",
+        text,
+    )
+    if month_name_match:
+        month = month_names[month_name_match.group(1)]
+        year = _normalize_year(int(month_name_match.group(2)))
+        return month, year
 
     return None
 

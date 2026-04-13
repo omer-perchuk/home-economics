@@ -12,6 +12,7 @@ from app.services.merchant_memory_service import (
     extract_merchant_key,
     upsert_memory,
     find_memory_candidates,
+    remember_transaction_choice,
 )
 from app.services.rule_based_categorizer import categorize_by_keywords, ALLOWED_CATEGORIES
 from app.services.message_intent_service import classify_message_intent
@@ -250,7 +251,21 @@ async def whatsapp_webhook(
         command = "list"
     elif message in ["אתר", "site"]:
         command = "site"
-    elif message in ["עדכן", "עדכון", "update"]:
+    elif message in [
+        "עדכן",
+        "תעדכן",
+        "עדכון",
+        "ערוך",
+        "תערוך",
+        "עריכה",
+        "שנה",
+        "שנה רשומה",
+        "עדכן רשומה",
+        "ערוך רשומה",
+        "update",
+        "edit",
+        "modify",
+    ]:
         command = "update"
     elif message in ["מחק", "מחיקה", "delete"]:
         command = "delete"
@@ -617,6 +632,15 @@ async def whatsapp_webhook(
                     return build_empty_ok_response()
 
         db.commit()
+        remember_transaction_choice(
+            db=db,
+            user_id=user.id,
+            family_id=family.id,
+            original_text=transaction.original_text,
+            description=transaction.description,
+            category=transaction.category,
+            tx_type=transaction.type,
+        )
         clear_user_state(sender)
         background_tasks.add_task(send_whatsapp_message, sender, format_updated_transaction_message(transaction))
         return build_empty_ok_response()

@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.db.database import get_db
 from app.db.models import Transaction
+from app.services.merchant_memory_service import remember_transaction_choice
 from app.services.report_service import (
     get_available_months,
     get_month_summary,
@@ -105,6 +106,16 @@ def create_transaction(
     db.commit()
     db.refresh(transaction)
 
+    remember_transaction_choice(
+        db=db,
+        user_id=session.user_id,
+        family_id=session.family_id,
+        original_text=transaction.original_text,
+        description=transaction.description,
+        category=transaction.category,
+        tx_type=transaction.type,
+    )
+
     return {
         "message": "Transaction created",
         "id": transaction.id,
@@ -156,5 +167,15 @@ def update_transaction(
 
     db.commit()
     db.refresh(transaction)
+
+    remember_transaction_choice(
+        db=db,
+        user_id=session.user_id,
+        family_id=session.family_id,
+        original_text=transaction.original_text,
+        description=transaction.description,
+        category=transaction.category,
+        tx_type=transaction.type,
+    )
 
     return {"message": "Transaction updated"}

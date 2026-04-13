@@ -70,10 +70,6 @@ type MeResponse = {
 
 type ViewType = "expense" | "income";
 
-type SummaryCategoryWithType = SummaryCategory & {
-  resolvedType: ViewType;
-};
-
 const RADIAN = Math.PI / 180;
 
 const categories = [
@@ -126,8 +122,16 @@ function getDaysInMonth(month: number, year: number) {
   return new Date(year, month, 0).getDate();
 }
 
-function resolveCategoryType(category: string): ViewType {
-  return incomeCategories.has(category) ? "income" : "expense";
+function getChartEntryColor(
+  category: string,
+  index: number,
+  currentViewType: ViewType
+) {
+  if (currentViewType === "income") {
+    return `hsl(140, 60%, ${35 + index * 6}%)`;
+  }
+
+  return categoryColors[category] || "#94a3b8";
 }
 
 export default function HomePage() {
@@ -576,40 +580,31 @@ export default function HomePage() {
     setSelectedCategory(null);
   }, [viewType]);
 
-  const normalizedCategories = useMemo<SummaryCategoryWithType[]>(() => {
-    if (!Array.isArray(summary?.categories)) return [];
-
-    return summary.categories.map((item) => ({
-      ...item,
-      resolvedType: resolveCategoryType(item.category),
-    }));
-  }, [summary]);
-
   const chartData = useMemo(() => {
-  if (viewType === "expense") {
-    return Array.isArray(summary?.categories)
-      ? summary.categories.filter(
-          (item) => !incomeCategories.has(item.category)
-        )
-      : [];
-  }
+    if (viewType === "expense") {
+      return Array.isArray(summary?.categories)
+        ? summary.categories.filter(
+            (item) => !incomeCategories.has(item.category)
+          )
+        : [];
+    }
 
-  const incomeTransactions = (Array.isArray(transactions) ? transactions : []).filter(
-    (tx) => tx.type === "income"
-  );
+    const incomeTransactions = (
+      Array.isArray(transactions) ? transactions : []
+    ).filter((tx) => tx.type === "income");
 
-  const grouped = new Map<string, number>();
+    const grouped = new Map<string, number>();
 
-  for (const tx of incomeTransactions) {
-    const key = tx.description || "ללא תיאור";
-    grouped.set(key, (grouped.get(key) || 0) + tx.amount);
-  }
+    for (const tx of incomeTransactions) {
+      const key = tx.description || "ללא תיאור";
+      grouped.set(key, (grouped.get(key) || 0) + tx.amount);
+    }
 
-  return Array.from(grouped.entries()).map(([category, amount]) => ({
-    category,
-    amount,
-  }));
-}, [viewType, summary, transactions]);
+    return Array.from(grouped.entries()).map(([category, amount]) => ({
+      category,
+      amount,
+    }));
+  }, [viewType, summary, transactions]);
 
   const displayedTotal = useMemo(() => {
     if (!summary) return 0;
@@ -841,11 +836,7 @@ export default function HomePage() {
                   {chartData.map((entry, index) => (
                     <Cell
                       key={index}
-                      fill={
-    viewType === "income"
-      ? `hsl(140, 60%, ${35 + index * 6}%)`
-      : categoryColors[entry.category] || "#94a3b8"
-  }
+                      fill={getChartEntryColor(entry.category, index, viewType)}
                       style={{
                         cursor: "pointer",
                         opacity:
@@ -868,6 +859,63 @@ export default function HomePage() {
               </PieChart>
             </ResponsiveContainer>
           </div>
+
+          {chartData.length > 0 && (
+            <div className="mt-4 space-y-2">
+              <div className="flex justify-start">
+                <button
+                  type="button"
+                  onClick={() => setSelectedCategory(null)}
+                  className={`rounded-full border px-3 py-1.5 text-sm font-medium transition ${
+                    selectedCategory === null
+                      ? "border-slate-900 bg-slate-900 text-white"
+                      : "border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300 hover:bg-slate-100"
+                  }`}
+                >
+                  All
+                </button>
+              </div>
+
+              <div className="grid gap-2">
+                {chartData.map((item, index) => {
+                  const isActive = selectedCategory === item.category;
+
+                  return (
+                    <button
+                      key={item.category}
+                      type="button"
+                      onClick={() => toggleCategory(item.category)}
+                      className={`flex w-full items-center justify-between rounded-2xl border px-3 py-2 text-right transition ${
+                        isActive
+                          ? "border-slate-900 bg-slate-900 text-white"
+                          : "border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300 hover:bg-slate-100"
+                      }`}
+                    >
+                      <span className="text-sm font-semibold">
+                        {formatCurrency(item.amount)}
+                      </span>
+
+                      <span className="flex items-center gap-2">
+                        <span className="text-sm font-medium">
+                          {item.category}
+                        </span>
+                        <span
+                          className="h-3 w-3 rounded-full"
+                          style={{
+                            backgroundColor: getChartEntryColor(
+                              item.category,
+                              index,
+                              viewType
+                            ),
+                          }}
+                        />
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="space-y-3">

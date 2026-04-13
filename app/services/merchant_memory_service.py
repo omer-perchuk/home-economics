@@ -100,3 +100,75 @@ def find_memory_candidates(db: Session, user_id: int, family_id: int, merchant_k
         "family": family_memories,
         "global": global_memories,
     }
+
+
+def remember_user_category_choice(
+    db: Session,
+    user_id: Optional[int],
+    family_id: Optional[int],
+    source_text: Optional[str],
+    category: str,
+    tx_type: str,
+):
+    if not source_text or not category or not tx_type:
+        return
+
+    merchant_key = extract_merchant_key(source_text)
+    if not merchant_key:
+        return
+
+    if user_id is not None:
+        upsert_memory(
+            db,
+            scope_type="user",
+            scope_id=user_id,
+            merchant_key=merchant_key,
+            category=category,
+            tx_type=tx_type,
+        )
+
+    if family_id is not None:
+        upsert_memory(
+            db,
+            scope_type="family",
+            scope_id=family_id,
+            merchant_key=merchant_key,
+            category=category,
+            tx_type=tx_type,
+        )
+
+    upsert_memory(
+        db,
+        scope_type="global",
+        scope_id=None,
+        merchant_key=merchant_key,
+        category=category,
+        tx_type=tx_type,
+    )
+
+
+def remember_transaction_choice(
+    db: Session,
+    user_id: Optional[int],
+    family_id: Optional[int],
+    original_text: Optional[str],
+    description: Optional[str],
+    category: str,
+    tx_type: str,
+):
+    candidate_texts = []
+
+    for value in [original_text, description]:
+        normalized = (value or "").strip()
+        if normalized and normalized not in candidate_texts:
+            candidate_texts.append(normalized)
+
+    for text in candidate_texts:
+        remember_user_category_choice(
+            db=db,
+            user_id=user_id,
+            family_id=family_id,
+            source_text=text,
+            category=category,
+            tx_type=tx_type,
+        )
