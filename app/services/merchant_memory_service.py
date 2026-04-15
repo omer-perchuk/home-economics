@@ -37,13 +37,13 @@ def upsert_memory(
             MerchantMemory.scope_type == scope_type,
             MerchantMemory.scope_id == scope_id,
             MerchantMemory.merchant_key == merchant_key,
-            MerchantMemory.category == category,
             MerchantMemory.tx_type == tx_type,
         )
         .first()
     )
 
     if memory:
+        memory.category = category
         memory.count += 1
         memory.last_used_at = datetime.utcnow()
     else:
