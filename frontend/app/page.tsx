@@ -1015,7 +1015,11 @@ export default function HomePage() {
 
             <select
               value={newCategory}
-              onChange={(e) => setNewCategory(e.target.value)}
+              onChange={(e) => {
+                const cat = e.target.value;
+                setNewCategory(cat);
+                setNewType(incomeCategories.has(cat) ? "income" : "expense");
+              }}
               className="w-full rounded-xl border border-slate-300 p-2"
             >
               {categories.map((c) => (
@@ -1099,7 +1103,11 @@ export default function HomePage() {
 
             <select
               value={editCategory}
-              onChange={(e) => setEditCategory(e.target.value)}
+              onChange={(e) => {
+                const cat = e.target.value;
+                setEditCategory(cat);
+                setEditType(incomeCategories.has(cat) ? "income" : "expense");
+              }}
               className="w-full rounded-xl border border-slate-300 p-2"
             >
               {categories.map((c) => (
