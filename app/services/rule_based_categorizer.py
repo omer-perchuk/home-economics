@@ -20,6 +20,8 @@ ALLOWED_CATEGORIES = [
     "אחר",
 ]
 
+INCOME_CATEGORIES = {"משכורת", "החזרים", "הכנסות"}
+
 CATEGORY_KEYWORDS = {
 
     "סופר וקניות לבית": [
@@ -190,7 +192,7 @@ def categorize_by_keywords(text: str) -> dict:
         if category != "אחר":
             break
 
-    if category in ["משכורת", "החזרים", "הכנסות"]:
+    if category in INCOME_CATEGORIES:
         tx_type = "income"
 
     return {

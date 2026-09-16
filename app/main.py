@@ -9,6 +9,7 @@ from app.services.report_service import get_category_summary
 from app.db.database import Base, engine, get_db
 from app.db.models import Transaction
 from app.db.models import MerchantMemory
+from app.db.models import RecurringTransaction
 from app.db.login_token import LoginToken
 from app.db.user_session import UserSession
 
@@ -18,6 +19,7 @@ from app.routes.settings_api import router as settings_api_router
 from app.routes.auth_api import router as auth_api_router
 
 from app.utils.session_auth import get_current_session
+from app.services.scheduler_service import start_scheduler
 
 app = FastAPI()
 
@@ -25,6 +27,7 @@ app = FastAPI()
 @app.on_event("startup")
 def startup():
     Base.metadata.create_all(bind=engine)
+    start_scheduler()
 
 
 app.add_middleware(

@@ -81,6 +81,41 @@ def format_added_transaction_message(parsed: dict) -> str:
     return f"✅ נוסף {amount} ₪ לקטגוריה: {emoji} {parsed['category']}"
 
 
+def format_recurring_for_whatsapp(recurring_list) -> str:
+    if not recurring_list:
+        return "📭 אין הוראות קבע פעילות."
+
+    lines = ["🔁 הוראות קבע", ""]
+
+    for index, r in enumerate(recurring_list, start=1):
+        emoji = get_category_emoji(r.category)
+        amount = format_short_amount(r.amount)
+        lines.append(f"{index}. {emoji} {r.description} — {amount} ₪ (כל {r.day_of_month} לחודש)")
+
+    return "\n".join(lines)
+
+
+def format_added_recurring_message(recurring, materialized_now: bool) -> str:
+    emoji = get_category_emoji(recurring.category)
+    amount = format_short_amount(recurring.amount)
+    lines = [
+        f"✅ נוספה הוראת קבע: {emoji} {recurring.description} — {amount} ₪ בכל {recurring.day_of_month} לחודש"
+    ]
+
+    if materialized_now:
+        lines.append("נוספה רשומה גם לחודש הנוכחי.")
+
+    return "\n".join(lines)
+
+
+def format_deleted_recurring_message(deleted_items: list[str]) -> str:
+    if not deleted_items:
+        return "לא נמצאו הוראות קבע למחיקה."
+
+    deleted_text = "\n".join(deleted_items)
+    return f"🗑️ בוטלו {len(deleted_items)} הוראות קבע:\n\n{deleted_text}"
+
+
 def format_deleted_transactions_message(deleted_items: list[str]) -> str:
     if not deleted_items:
         return "לא נמצאו רשומות למחיקה."
@@ -113,6 +148,9 @@ def format_help_message():
 
 🗑️ מחק
 מאפשר לבחור רשומה קיימת ולמחוק אותה.
+
+🔁 הוראת קבע
+מאפשר להגדיר תשלום חודשי קבוע (כמו שכירות או ביטוח) שייווסף אוטומטית כל חודש, בלי צורך להזין אותו מחדש.
 
 ❓ עזרה
 מציג את ההודעה הזאת שוב."""

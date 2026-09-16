@@ -48,11 +48,34 @@ class Transaction(Base):
     family_id = Column(Integer, ForeignKey("families.id"), nullable=False, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     user_phone = Column(String, nullable=True, index=True)
+    recurring_id = Column(Integer, ForeignKey("recurring_transactions.id"), nullable=True, index=True)
 
     created_at = Column(DateTime, default=datetime.utcnow)
 
     family = relationship("Family", back_populates="transactions")
     user = relationship("User", back_populates="transactions")
+    recurring = relationship("RecurringTransaction", back_populates="transactions")
+
+
+class RecurringTransaction(Base):
+    __tablename__ = "recurring_transactions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    description = Column(String, nullable=False)
+    amount = Column(Float, nullable=False)
+    type = Column(String, nullable=False)
+    category = Column(String, nullable=False)
+    day_of_month = Column(Integer, nullable=False)
+
+    family_id = Column(Integer, ForeignKey("families.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    family = relationship("Family")
+    user = relationship("User")
+    transactions = relationship("Transaction", back_populates="recurring")
 
 
 class JoinRequest(Base):

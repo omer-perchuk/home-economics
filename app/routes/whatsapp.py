@@ -14,7 +14,7 @@ from app.services.merchant_memory_service import (
     find_memory_candidates,
     remember_transaction_choice,
 )
-from app.services.rule_based_categorizer import categorize_by_keywords, ALLOWED_CATEGORIES
+from app.services.rule_based_categorizer import categorize_by_keywords, ALLOWED_CATEGORIES, INCOME_CATEGORIES
 from app.services.message_intent_service import classify_message_intent
 from app.services.magic_link_service import create_magic_link
 from app.services.ai_categorizer import categorize_transaction_text
@@ -40,6 +40,12 @@ from app.services.state_service import (
 )
 from app.services.command_service import detect_command
 from app.services.family_service import get_user_and_family_by_phone
+from app.services.recurring_service import (
+    create_recurring,
+    get_active_recurring,
+    deactivate_recurring,
+    materialize_recurring_if_due,
+)
 from app.services.whatsapp_format_service import (
     format_summary_for_whatsapp_short,
     format_transactions_for_whatsapp_short,
@@ -48,6 +54,9 @@ from app.services.whatsapp_format_service import (
     format_deleted_transactions_message,
     format_help_message,
     format_short_amount,
+    format_recurring_for_whatsapp,
+    format_added_recurring_message,
+    format_deleted_recurring_message,
 )
 
 print("=== WHATSAPP ROUTE LOADED ===")
@@ -631,6 +640,8 @@ async def whatsapp_webhook(
                     background_tasks.add_task(send_whatsapp_message, sender, f"לא זיהיתי קטגוריה. שלח מספר:\n{categories_list}")
                     return build_empty_ok_response()
 
+            transaction.type = "income" if transaction.category in INCOME_CATEGORIES else "expense"
+
         db.commit()
         remember_transaction_choice(
             db=db,
@@ -643,6 +654,142 @@ async def whatsapp_webhook(
         )
         clear_user_state(sender)
         background_tasks.add_task(send_whatsapp_message, sender, format_updated_transaction_message(transaction))
+        return build_empty_ok_response()
+
+    # ===============================
+    # הוראת קבע - תפריט (הוספה / מחיקה)
+    # ===============================
+    if user_state and user_state.get("action") == "recurring_menu":
+        if message in ["הוסף", "הוספה", "חדש", "add", "+"]:
+            set_user_state(sender, {"action": "recurring_add_description"})
+            background_tasks.add_task(
+                send_whatsapp_message,
+                sender,
+                "🔁 מה השם של התשלום הקבוע? (למשל: שכירות, ביטוח, ארנונה)"
+            )
+            return build_empty_ok_response()
+
+        recurring_ids = user_state.get("recurring_ids", [])
+        parts = message.replace(",", " ").split()
+        selected_indexes = [int(p) - 1 for p in parts if p.isdigit()]
+
+        if not selected_indexes:
+            background_tasks.add_task(
+                send_whatsapp_message,
+                sender,
+                "🔁 שלח מספר הוראת קבע למחיקה, או 'הוסף' להוספת הוראה חדשה."
+            )
+            return build_empty_ok_response()
+
+        deleted = []
+        for index in selected_indexes:
+            if 0 <= index < len(recurring_ids):
+                r = deactivate_recurring(db, recurring_ids[index])
+                if r:
+                    amount = format_short_amount(r.amount)
+                    deleted.append(f"{r.description} — {amount} ₪")
+
+        clear_user_state(sender)
+        background_tasks.add_task(send_whatsapp_message, sender, format_deleted_recurring_message(deleted))
+        return build_empty_ok_response()
+
+    # ===============================
+    # הוראת קבע - הוספה: שם
+    # ===============================
+    if user_state and user_state.get("action") == "recurring_add_description":
+        description = raw_message.strip()
+
+        if not description:
+            background_tasks.add_task(send_whatsapp_message, sender, "🔁 שלח שם לתשלום הקבוע.")
+            return build_empty_ok_response()
+
+        set_user_state(sender, {"action": "recurring_add_amount", "description": description})
+        background_tasks.add_task(send_whatsapp_message, sender, "💰 כמה זה עולה כל חודש? (מספר בלבד)")
+        return build_empty_ok_response()
+
+    # ===============================
+    # הוראת קבע - הוספה: סכום
+    # ===============================
+    if user_state and user_state.get("action") == "recurring_add_amount":
+        import re as _re
+        cleaned = _re.sub(r"[^\d.]", "", raw_message)
+
+        try:
+            amount = float(cleaned)
+            if amount <= 0:
+                raise ValueError
+        except Exception:
+            background_tasks.add_task(send_whatsapp_message, sender, "לא הבנתי את הסכום. שלח מספר בלבד, למשל: 3500")
+            return build_empty_ok_response()
+
+        state_data = dict(user_state)
+        state_data["action"] = "recurring_add_category"
+        state_data["amount"] = amount
+        set_user_state(sender, state_data)
+
+        categories_list = "\n".join([f"{i+1}. {cat}" for i, cat in enumerate(ALLOWED_CATEGORIES)])
+        background_tasks.add_task(send_whatsapp_message, sender, f"📂 בחר קטגוריה (שלח מספר):\n{categories_list}")
+        return build_empty_ok_response()
+
+    # ===============================
+    # הוראת קבע - הוספה: קטגוריה
+    # ===============================
+    if user_state and user_state.get("action") == "recurring_add_category":
+        category = None
+
+        if message.isdigit():
+            idx = int(message) - 1
+            if 0 <= idx < len(ALLOWED_CATEGORIES):
+                category = ALLOWED_CATEGORIES[idx]
+        else:
+            category = next((cat for cat in ALLOWED_CATEGORIES if raw_message.strip() in cat or cat in raw_message.strip()), None)
+
+        if not category:
+            categories_list = "\n".join([f"{i+1}. {cat}" for i, cat in enumerate(ALLOWED_CATEGORIES)])
+            background_tasks.add_task(send_whatsapp_message, sender, f"לא זיהיתי קטגוריה. שלח מספר:\n{categories_list}")
+            return build_empty_ok_response()
+
+        state_data = dict(user_state)
+        state_data["action"] = "recurring_add_day"
+        state_data["category"] = category
+        set_user_state(sender, state_data)
+
+        background_tasks.add_task(send_whatsapp_message, sender, "📅 באיזה יום בחודש לחייב? (מספר בין 1 ל-28)")
+        return build_empty_ok_response()
+
+    # ===============================
+    # הוראת קבע - הוספה: יום בחודש + יצירה
+    # ===============================
+    if user_state and user_state.get("action") == "recurring_add_day":
+        if not message.isdigit() or not (1 <= int(message) <= 28):
+            background_tasks.add_task(send_whatsapp_message, sender, "שלח מספר יום בין 1 ל-28.")
+            return build_empty_ok_response()
+
+        day_of_month = int(message)
+        description = user_state.get("description")
+        amount = user_state.get("amount")
+        category = user_state.get("category")
+        tx_type = "income" if category in INCOME_CATEGORIES else "expense"
+
+        recurring = create_recurring(
+            db,
+            family_id=family.id,
+            user_id=user.id,
+            description=description,
+            amount=amount,
+            tx_type=tx_type,
+            category=category,
+            day_of_month=day_of_month,
+        )
+
+        materialized = materialize_recurring_if_due(db, recurring)
+
+        clear_user_state(sender)
+        background_tasks.add_task(
+            send_whatsapp_message,
+            sender,
+            format_added_recurring_message(recurring, materialized_now=materialized is not None)
+        )
         return build_empty_ok_response()
 
     # ===============================
@@ -781,6 +928,31 @@ async def whatsapp_webhook(
             "פתח את מדריך ההתחלה 👇",
             guide_link,
         )
+        return build_empty_ok_response()
+
+    # ===============================
+    # פקודת הוראת קבע
+    # ===============================
+    if command == "recurring":
+        recurring_list = get_active_recurring(db, family.id)
+
+        if recurring_list:
+            recurring_ids = [r.id for r in recurring_list]
+            set_user_state(sender, {"action": "recurring_menu", "recurring_ids": recurring_ids})
+            formatted = format_recurring_for_whatsapp(recurring_list)
+            background_tasks.add_task(
+                send_whatsapp_message,
+                sender,
+                f"{formatted}\n\n➕ שלח 'הוסף' להוספת הוראת קבע חדשה\n🗑️ שלח מספר למחיקה"
+            )
+        else:
+            set_user_state(sender, {"action": "recurring_add_description"})
+            background_tasks.add_task(
+                send_whatsapp_message,
+                sender,
+                "📭 אין לך עדיין הוראות קבע.\n\n🔁 מה השם של התשלום הקבוע? (למשל: שכירות, ביטוח, ארנונה)"
+            )
+
         return build_empty_ok_response()
 
     # ===============================
