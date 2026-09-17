@@ -125,6 +125,9 @@ function Bubble({ side, text, icon, ctaLabel }: { side: "user" | "bot"; text: st
   );
 }
 
+const SPEED_DIVISOR = 7;
+const MIN_STEP_DELAY = 40;
+
 export default function WhatsAppGuideDemo() {
   const [messages, setMessages] = useState<ChatItem[]>([]);
   const [isTyping, setIsTyping] = useState(false);
@@ -141,12 +144,12 @@ export default function WhatsAppGuideDemo() {
           scrollRef.current.scrollTo({ top: 0, behavior: "auto" });
         }
 
-        await new Promise((r) => setTimeout(r, 1200));
+        await new Promise((r) => setTimeout(r, 200));
         if (cancelled) return;
 
         for (let i = 0; i < STEPS.length; i += 1) {
           const step = STEPS[i];
-          const delay = step.delay ?? 800;
+          const delay = Math.max(MIN_STEP_DELAY, Math.round((step.delay ?? 800) / SPEED_DIVISOR));
           await new Promise((r) => setTimeout(r, delay));
           if (cancelled) return;
 

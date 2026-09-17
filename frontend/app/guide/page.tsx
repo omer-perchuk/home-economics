@@ -26,6 +26,7 @@ type GuideSectionProps = {
   subtitle: string;
   accentClass: string;
   children: React.ReactNode;
+  immediate?: boolean;
 };
 
 function useReveal<T extends HTMLElement>() {
@@ -63,8 +64,10 @@ function GuideSection({
   subtitle,
   accentClass,
   children,
+  immediate = false,
 }: GuideSectionProps) {
-  const { ref, visible } = useReveal<HTMLElement>();
+  const { ref, visible: revealed } = useReveal<HTMLElement>();
+  const visible = immediate || revealed;
 
   return (
     <section
@@ -222,6 +225,7 @@ export default function GuidePage() {
             title="איך משתמשים בבוט בוואטסאפ"
             subtitle="כל הפעולות החשובות זמינות דרך הודעות קצרות ופשוטות."
             accentClass="from-green-100 via-emerald-100 to-white"
+            immediate
           >
             <div className="flex flex-col items-center gap-4">
               <div className="grid w-full grid-cols-1 gap-3 md:grid-cols-2">
@@ -258,6 +262,7 @@ export default function GuidePage() {
             title="מה אפשר לעשות באתר"
             subtitle="ממשק נקי לניהול שוטף של הנתונים והדוחות."
             accentClass="from-lime-100 via-emerald-100 to-white"
+            immediate
           >
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <FeatureBubble
