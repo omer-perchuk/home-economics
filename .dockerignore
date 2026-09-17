@@ -1,0 +1,5 @@
+frontend/
+.git
+.claude/
+__pycache__/
+*.pyc
