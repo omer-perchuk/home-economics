@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.db.database import get_db
 from app.db.models import Transaction
 from app.services.merchant_memory_service import remember_transaction_choice
+from app.services.recurring_service import create_recurring
 from app.services.report_service import (
     get_available_months,
     get_month_summary,
@@ -26,6 +27,14 @@ class TransactionCreate(BaseModel):
     day: int
     month: int
     year: int
+
+
+class RecurringCreate(BaseModel):
+    description: str
+    amount: float
+    category: str
+    type: str
+    day_of_month: int
 
 
 class TransactionUpdate(BaseModel):
@@ -119,6 +128,32 @@ def create_transaction(
     return {
         "message": "Transaction created",
         "id": transaction.id,
+    }
+
+
+@router.post("/recurring")
+def create_recurring_transaction(
+    data: RecurringCreate,
+    session=Depends(get_current_session),
+    db: Session = Depends(get_db),
+):
+    if not (1 <= data.day_of_month <= 28):
+        raise HTTPException(status_code=400, detail="day_of_month must be between 1 and 28")
+
+    recurring = create_recurring(
+        db,
+        family_id=session.family_id,
+        user_id=session.user_id,
+        description=data.description,
+        amount=data.amount,
+        tx_type=data.type,
+        category=data.category,
+        day_of_month=data.day_of_month,
+    )
+
+    return {
+        "message": "Recurring transaction created",
+        "id": recurring.id,
     }
 
 

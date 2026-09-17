@@ -16,6 +16,7 @@ import {
   FileBarChart2,
   CalendarDays,
   BookOpen,
+  Repeat,
 } from "lucide-react";
 
 type MonthOption = {
@@ -164,6 +165,7 @@ export default function HomePage() {
   const [editType, setEditType] = useState("expense");
   const [editDay, setEditDay] = useState(1);
   const [editMonth, setEditMonth] = useState(1);
+  const [editIsRecurring, setEditIsRecurring] = useState(false);
 
   const [newDescription, setNewDescription] = useState("");
   const [newAmount, setNewAmount] = useState(0);
@@ -171,6 +173,7 @@ export default function HomePage() {
   const [newType, setNewType] = useState("expense");
   const [newDay, setNewDay] = useState(1);
   const [newMonth, setNewMonth] = useState(1);
+  const [newIsRecurring, setNewIsRecurring] = useState(false);
 
   const [title, setTitle] = useState("כלכלת הבית");
   const [titleDraft, setTitleDraft] = useState("כלכלת הבית");
@@ -411,10 +414,47 @@ export default function HomePage() {
     setEditAmount(tx.amount);
     setEditCategory(tx.category);
     setEditType(tx.type);
+    setEditIsRecurring(false);
 
     const [dayStr, monthStr] = tx.date.split("/");
     setEditDay(Number(dayStr));
     setEditMonth(Number(monthStr));
+  }
+
+  async function createRecurringOrder({
+    description,
+    amount,
+    category,
+    type,
+    dayOfMonth,
+  }: {
+    description: string;
+    amount: number;
+    category: string;
+    type: string;
+    dayOfMonth: number;
+  }) {
+    try {
+      const res = await fetchWithAuth(`${backendUrl}/api/recurring`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          description,
+          amount,
+          category,
+          type,
+          day_of_month: Math.min(dayOfMonth, 28),
+        }),
+      });
+
+      if (!res.ok) {
+        console.error("createRecurringOrder failed:", res.status, res.statusText);
+      }
+    } catch (error) {
+      console.error("createRecurringOrder error:", error);
+    }
   }
 
   async function saveEdit() {
@@ -445,7 +485,18 @@ export default function HomePage() {
         return;
       }
 
+      if (editIsRecurring) {
+        await createRecurringOrder({
+          description: editDescription,
+          amount: editAmount,
+          category: editCategory,
+          type: editType,
+          dayOfMonth: editDay,
+        });
+      }
+
       setEditing(null);
+      setEditIsRecurring(false);
       loadData(selectedMonth.month, selectedMonth.year);
       loadMonths();
     } catch (error) {
@@ -478,6 +529,16 @@ export default function HomePage() {
         return;
       }
 
+      if (newIsRecurring) {
+        await createRecurringOrder({
+          description: newDescription,
+          amount: newAmount,
+          category: newCategory,
+          type: newType,
+          dayOfMonth: newDay,
+        });
+      }
+
       setShowCreateModal(false);
       setNewDescription("");
       setNewAmount(0);
@@ -485,6 +546,7 @@ export default function HomePage() {
       setNewType("expense");
       setNewDay(1);
       setNewMonth(selectedMonth.month);
+      setNewIsRecurring(false);
 
       loadMonths();
       loadData(selectedMonth.month, selectedMonth.year);
@@ -921,7 +983,10 @@ export default function HomePage() {
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <button
-              onClick={() => setShowCreateModal(true)}
+              onClick={() => {
+                setNewIsRecurring(false);
+                setShowCreateModal(true);
+              }}
               className="rounded-xl bg-green-600 p-2 text-white shadow-sm hover:bg-green-700"
             >
               <Plus size={18} />
@@ -1065,6 +1130,16 @@ export default function HomePage() {
               </select>
             </div>
 
+            <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-300 p-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={newIsRecurring}
+                onChange={(e) => setNewIsRecurring(e.target.checked)}
+              />
+              <Repeat size={16} className="text-green-600" />
+              הפוך להוראת קבע (יתווסף אוטומטית כל חודש)
+            </label>
+
             <div className="flex justify-end gap-3 pt-2">
               <button
                 onClick={() => setShowCreateModal(false)}
@@ -1152,6 +1227,16 @@ export default function HomePage() {
                 ))}
               </select>
             </div>
+
+            <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-300 p-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={editIsRecurring}
+                onChange={(e) => setEditIsRecurring(e.target.checked)}
+              />
+              <Repeat size={16} className="text-green-600" />
+              הפוך להוראת קבע (יתווסף אוטומטית כל חודש)
+            </label>
 
             <div className="flex justify-end gap-3 pt-2">
               <button

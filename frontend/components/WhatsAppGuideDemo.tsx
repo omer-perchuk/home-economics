@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { MessageCircle, CheckCircle2, Bot, Globe, BarChart3, Trash2, Pencil, ChevronDown } from "lucide-react";
+import { MessageCircle, CheckCircle2, Bot, Globe, BarChart3, Trash2, Pencil, ChevronDown, Repeat } from "lucide-react";
 
 type ChatItem = {
   id: string;
@@ -64,7 +64,20 @@ const STEPS: Step[] = [
 
   { kind: "message", side: "user", text: "עזרה", delay: 1000 },
   { kind: "typing", delay: 800 },
-  { kind: "message", side: "bot", text: "💡 איך משתמשים בבוט?\n\n📝 הוספת רשומה\n📋 הצג / רשומות\n📊 סיכום\n🌐 אתר\n✏️ עדכן\n🗑️ מחק", icon: <Globe className="h-4 w-4" />, ctaLabel: "פתח את מדריך ההתחלה 👇", delay: 1000 },
+  { kind: "message", side: "bot", text: "💡 איך משתמשים בבוט?\n\n📝 הוספת רשומה\n📋 הצג / רשומות\n📊 סיכום\n🌐 אתר\n✏️ עדכן\n🗑️ מחק\n🔁 הוראת קבע", icon: <Globe className="h-4 w-4" />, ctaLabel: "פתח את מדריך ההתחלה 👇", delay: 1000 },
+
+  { kind: "message", side: "user", text: "הוראת קבע", delay: 1000 },
+  { kind: "typing", delay: 850 },
+  { kind: "message", side: "bot", text: "📭 אין לך עדיין הוראות קבע.\n\n🔁 מה השם של התשלום הקבוע? (למשל: שכירות, ביטוח, ארנונה)", icon: <Repeat className="h-4 w-4" />, delay: 900 },
+  { kind: "message", side: "user", text: "שכירות", delay: 900 },
+  { kind: "typing", delay: 800 },
+  { kind: "message", side: "bot", text: "💰 כמה זה עולה כל חודש? (מספר בלבד)", delay: 700 },
+  { kind: "message", side: "user", text: "3500", delay: 800 },
+  { kind: "typing", delay: 800 },
+  { kind: "message", side: "bot", text: "📅 באיזה יום בחודש לחייב? (מספר בין 1 ל-28)", delay: 700 },
+  { kind: "message", side: "user", text: "1", delay: 800 },
+  { kind: "typing", delay: 850 },
+  { kind: "message", side: "bot", text: "✅ נוספה הוראת קבע: 🏠 שכירות — 3500 ₪ בכל 1 לחודש\n\nמעכשיו זה יתווסף אוטומטית כל חודש, בלי צורך להזין את זה שוב.", icon: <Repeat className="h-4 w-4" />, delay: 1000 },
 ];
 
 function BotTyping() {
