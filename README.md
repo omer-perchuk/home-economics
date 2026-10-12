@@ -248,5 +248,8 @@ https://main.d11fqx2zyfwk68.amplifyapp.com
 
 - הבוט מתחבר ל-WhatsApp דרך Meta Cloud API (`/webhook/whatsapp`), לא דרך Twilio.
 - משתני סביבה נדרשים: `META_ACCESS_TOKEN`, `META_PHONE_NUMBER_ID`, `META_VERIFY_TOKEN`, `DATABASE_URL`, `OPENAI_API_KEY`.
+- מסד הנתונים: PostgreSQL על [Neon](https://neon.com) (מסלול חינמי, us-east-1). הועבר מ-AWS RDS ב-11/10/2026.
+  - בשרת, `DATABASE_URL` מצביע על כתובת ה-**pooled** של Neon (`...-pooler...?sslmode=require`).
+  - ל-`pg_dump` / `psql` / שינויי סכימה משתמשים בכתובת הישירה (בלי `-pooler`).
 - אין Alembic — שינויי סכימה מבוצעים ידנית מול מסד הנתונים.
 - ה-Dockerfile של השרת נמצא ב-`docker/backend/Dockerfile`.
