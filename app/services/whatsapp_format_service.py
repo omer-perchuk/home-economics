@@ -6,6 +6,15 @@ def get_category_emoji(category: str) -> str:
         "דיור וחשבונות": "🏠",
         "בריאות ופארם": "💊",
         "בילויים ופנאי": "🎉",
+        "ביגוד והנעלה": "👕",
+        "ילדים ומשפחה": "👨‍👩‍👧",
+        "לימודים": "📚",
+        "חופשות ונסיעות": "✈️",
+        "מתנות ותרומות": "🎁",
+        "ביטוחים": "🛡️",
+        "חיות מחמד": "🐾",
+        "משכורת": "💰",
+        "החזרים": "↩️",
         "הכנסות": "💰",
         "אחר": "📦",
     }
@@ -81,6 +90,45 @@ def format_added_transaction_message(parsed: dict) -> str:
     return f"✅ נוסף {amount} ₪ לקטגוריה: {emoji} {parsed['category']}"
 
 
+def format_transaction_line(transaction, include_date: bool = False) -> str:
+    emoji = get_category_emoji(transaction.category)
+    amount = format_short_amount(transaction.amount)
+    description = transaction.description if transaction.description else "ללא תיאור"
+    line = f"{emoji} {description} — {amount} ₪"
+    if include_date and transaction.created_at:
+        line += f" · {transaction.created_at.strftime('%d/%m')}"
+    return line
+
+
+def format_added_entries_message(transactions, uncertain_ids=None, show_dates: bool = False) -> str:
+    uncertain_ids = uncertain_ids or set()
+
+    if len(transactions) == 1:
+        tx = transactions[0]
+        title = "💰 נוספה הכנסה" if tx.type == "income" else "✅ נוסף"
+        lines = [
+            f"{title}: {tx.description} — {format_short_amount(tx.amount)} ₪",
+            f"{get_category_emoji(tx.category)} {tx.category}",
+        ]
+        if show_dates and tx.created_at:
+            lines.append(f"📅 {tx.created_at.strftime('%d/%m/%Y')}")
+        if tx.id in uncertain_ids:
+            lines.append("🤔 לא בטוח בקטגוריה – אפשר לשנות בכפתור")
+        return "\n".join(lines)
+
+    total = sum(t.amount for t in transactions if t.type == "expense")
+    lines = [f"✅ נוספו {len(transactions)} רשומות:", ""]
+    for tx in transactions:
+        line = f"{format_transaction_line(tx, include_date=show_dates)} ({tx.category})"
+        if tx.id in uncertain_ids:
+            line += " 🤔"
+        lines.append(line)
+    if total:
+        lines.append("")
+        lines.append(f"סה״כ הוצאות: {format_short_amount(total)} ₪")
+    return "\n".join(lines)
+
+
 def format_recurring_for_whatsapp(recurring_list) -> str:
     if not recurring_list:
         return "📭 אין הוראות קבע פעילות."
@@ -134,11 +182,20 @@ def format_help_message():
 שופרסל 200
 משכורת 12000
 
+אפשר גם כמה רשומות ותאריך:
+סופר 340, דלק 250
+ארומה 20 אתמול
+
+💬 שאלות ובקשות חופשיות
+כמה הוצאנו על אוכל בחוץ החודש?
+תמחק את הקפה של אתמול
+תשנה את הסופר האחרון ל-320
+
 📋 הצג / רשומות
 מציג את כל הרשומות של החודש הנוכחי.
 
 📊 סיכום
-מציג סיכום הוצאות לפי חודש שתבחר.
+מציג סיכום הוצאות. אפשר גם: סיכום ספטמבר / סיכום שעבר.
 
 🌐 אתר
 שולח קישור מאובטח לאתר.
@@ -151,6 +208,9 @@ def format_help_message():
 
 🔁 הוראת קבע
 מאפשר להגדיר תשלום חודשי קבוע (כמו שכירות או ביטוח) שייווסף אוטומטית כל חודש, בלי צורך להזין אותו מחדש.
+
+↩️ בטל
+מבטל את הפעולה האחרונה (למשל רשומה שנוספה בטעות).
 
 ❓ עזרה
 מציג את ההודעה הזאת שוב."""

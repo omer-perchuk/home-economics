@@ -45,10 +45,10 @@ def get_active_recurring(db: Session, family_id: int):
     )
 
 
-def deactivate_recurring(db: Session, recurring_id: int) -> Optional[RecurringTransaction]:
+def deactivate_recurring(db: Session, recurring_id: int, family_id: int) -> Optional[RecurringTransaction]:
     recurring = (
         db.query(RecurringTransaction)
-        .filter(RecurringTransaction.id == recurring_id)
+        .filter(RecurringTransaction.id == recurring_id, RecurringTransaction.family_id == family_id)
         .first()
     )
     if not recurring:

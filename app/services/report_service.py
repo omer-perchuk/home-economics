@@ -15,7 +15,7 @@ def _normalize_year(year: int) -> int:
     return year
 
 
-def parse_month_input(text: str):
+def parse_month_input(text: str, now: Optional[datetime] = None):
     text = text.strip().lower()
 
     month_names = {
@@ -49,6 +49,30 @@ def parse_month_input(text: str):
     if month_name_match:
         month = month_names[month_name_match.group(1)]
         year = _normalize_year(int(month_name_match.group(2)))
+        return month, year
+
+    now = now or datetime.utcnow()
+
+    if re.search(r"(?:^|\s)(?:ה?חודש\s+)?(?:ש?עבר|הקודם|קודם)(?:\s|$)", text):
+        if now.month == 1:
+            return 12, now.year - 1
+        return now.month - 1, now.year
+
+    if re.search(r"(?:^|\s)החודש(?:\s|$)", text):
+        return now.month, now.year
+
+    # שם חודש בלי שנה – החודש האחרון בשם הזה (לא בעתיד)
+    month_only_match = re.search(rf"(?:^|\s)ב?({month_name_pattern})(?:\s|$)", text)
+    if month_only_match:
+        month = month_names[month_only_match.group(1)]
+        year = now.year if month <= now.month else now.year - 1
+        return month, year
+
+    # מספר חודש בודד: "9" או "סיכום 9"
+    bare_number_match = re.fullmatch(r"(?:\S+\s+)?(1[0-2]|0?[1-9])", text)
+    if bare_number_match:
+        month = int(bare_number_match.group(1))
+        year = now.year if month <= now.month else now.year - 1
         return month, year
 
     return None
@@ -158,10 +182,10 @@ def get_available_months(db: Session, family_id: Optional[int] = None):
     ]
 
 
-def delete_transaction_by_id(db: Session, transaction_id: int):
+def delete_transaction_by_id(db: Session, transaction_id: int, family_id: int):
     transaction = (
         db.query(Transaction)
-        .filter(Transaction.id == transaction_id)
+        .filter(Transaction.id == transaction_id, Transaction.family_id == family_id)
         .first()
     )
 

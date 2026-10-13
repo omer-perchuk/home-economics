@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, Boolean, DateTime, Float
+from sqlalchemy import Column, Integer, String, ForeignKey, Boolean, DateTime, Float, Text
 from datetime import datetime
 from sqlalchemy.orm import relationship
 
@@ -103,3 +103,31 @@ class MerchantMemory(Base):
 
     count = Column(Integer, default=1, nullable=False)
     last_used_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+class ConversationState(Base):
+    __tablename__ = "conversation_states"
+
+    phone = Column(String, primary_key=True)
+    state_json = Column(Text, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class ProcessedMessage(Base):
+    __tablename__ = "processed_messages"
+
+    message_id = Column(String, primary_key=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class BotEvent(Base):
+    __tablename__ = "bot_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    family_id = Column(Integer, ForeignKey("families.id"), nullable=True, index=True)
+
+    role = Column(String, nullable=False)  # user / assistant
+    content = Column(Text, nullable=False)
+    action_json = Column(Text, nullable=True)  # פעולה שאפשר לבטל, למשל {"kind": "add", "transaction_ids": [..]}
+
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)

@@ -17,7 +17,7 @@ def _notify_recurring_created(recurring, transaction) -> None:
         return
 
     from app.db.models import User
-    from app.routes.whatsapp import send_whatsapp_message
+    from app.services.whatsapp_client import send_whatsapp_message
 
     db = SessionLocal()
     try:
