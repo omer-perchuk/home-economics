@@ -1,11 +1,15 @@
-fastapi
-uvicorn[standard]
-sqlalchemy
-psycopg2-binary
-python-multipart
-openai
+# גרסאות נעולות לפי ה-image שעובד בפרודקשן (09-26).
+# בלי נעילה, SQLAlchemy 2.1 עובר ל-psycopg (v3) כברירת מחדל והשרת לא עולה.
+fastapi==0.141.1
+starlette==1.6.0
+pydantic==2.13.5
+uvicorn[standard]==0.53.0
+sqlalchemy==2.0.54
+psycopg2-binary==2.9.13
+python-multipart==0.0.32
+openai==3.14.1
 setuptools
 wheel
-httpx
-apscheduler
+httpx==0.28.1
+apscheduler==3.11.3
 tzdata
