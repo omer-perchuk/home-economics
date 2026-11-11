@@ -29,7 +29,7 @@ export default function AuthPageClient() {
     const endpoint = token
       ? "/api/auth/verify-magic-link"
       : "/api/auth/master-login";
-    const body = token ? { token } : { key: masterKey };
+    const body = token ? { token } : {};
 
     fetch(`${process.env.NEXT_PUBLIC_API_URL}${endpoint}`, {
       method: "POST",
