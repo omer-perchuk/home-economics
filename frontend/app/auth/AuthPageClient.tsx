@@ -16,21 +16,27 @@ export default function AuthPageClient() {
     hasRunRef.current = true;
 
     const token = searchParams.get("token");
+    const masterKey = searchParams.get("master");
     const redirectParam = searchParams.get("redirect");
     const redirectTarget =
       redirectParam && redirectParam.startsWith("/") ? redirectParam : "/";
 
-    if (!token) {
+    if (!token && !masterKey) {
       setError("הגישה לאתר אפשרית רק דרך קישור מהבוט.");
       return;
     }
 
-    fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/verify-magic-link`, {
+    const endpoint = token
+      ? "/api/auth/verify-magic-link"
+      : "/api/auth/master-login";
+    const body = token ? { token } : { key: masterKey };
+
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}${endpoint}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ token }),
+      body: JSON.stringify(body),
     })
       .then(async (res) => {
         if (!res.ok) {
