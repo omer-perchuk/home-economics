@@ -14,6 +14,8 @@ from app.services.report_service import (
     get_month_summary,
     get_transactions_by_month,
 )
+from app.services.text_entry_service import add_transaction_from_text
+from app.services.whatsapp_format_service import format_added_transaction_message
 from app.utils.session_auth import get_current_session
 
 router = APIRouter(prefix="/api", tags=["dashboard"])
@@ -128,6 +130,45 @@ def create_transaction(
     return {
         "message": "Transaction created",
         "id": transaction.id,
+    }
+
+
+class TextEntryCreate(BaseModel):
+    text: str
+
+
+@router.post("/transactions/from-text")
+def create_transaction_from_text(
+    data: TextEntryCreate,
+    session=Depends(get_current_session),
+    db: Session = Depends(get_db),
+):
+    """הוספת רשומה מטקסט חופשי, כמו הודעה לבוט ("קפה 15")."""
+    text = data.text.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="empty text")
+
+    parsed = add_transaction_from_text(
+        db,
+        text,
+        user_id=session.user_id,
+        family_id=session.family_id,
+    )
+
+    if parsed is None:
+        return {
+            "success": False,
+            "message": "לא זיהיתי סכום. נסה למשל: קפה 15",
+        }
+
+    return {
+        "success": True,
+        "message": format_added_transaction_message(parsed),
+        "id": parsed["transaction_id"],
+        "description": parsed["description"],
+        "amount": parsed["amount"],
+        "category": parsed["category"],
+        "type": parsed["type"],
     }
 
 

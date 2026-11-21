@@ -39,6 +39,7 @@ from app.services.state_service import (
     clear_user_state,
 )
 from app.services.command_service import detect_command
+from app.services.text_entry_service import parse_text_entry, add_transaction_from_text
 from app.services.family_service import get_user_and_family_by_phone
 from app.services.recurring_service import (
     create_recurring,
@@ -958,9 +959,7 @@ async def whatsapp_webhook(
     # ===============================
     # הוספת רשומה - memory -> rule-based -> AI
     # ===============================
-    merchant_key = extract_merchant_key(raw_message)
-    base_result = categorize_by_keywords(raw_message)
-    print("=== RULE BASED RESULT ===", base_result)
+    base_result = parse_text_entry(raw_message)
 
     # אם אין סכום בכלל - נבדוק אם זו פקודה או רשומה חסרה
     if base_result["amount"] <= 0:
@@ -1096,86 +1095,14 @@ async def whatsapp_webhook(
         )
         return build_empty_ok_response()
 
-    # קודם כל בודקים זיכרון
-    memory_candidates = {"user": [], "family": [], "global": []}
-    if merchant_key:
-        memory_candidates = find_memory_candidates(db, user.id, family.id, merchant_key)
-
-    parsed_result = {
-        **base_result
-    }
-
-    if memory_candidates["user"]:
-        best = memory_candidates["user"][0]
-        parsed_result["category"] = best.category
-        parsed_result["type"] = best.tx_type
-        print("=== USING USER MEMORY ===", best.category, best.tx_type)
-
-    elif memory_candidates["family"]:
-        best = memory_candidates["family"][0]
-        parsed_result["category"] = best.category
-        parsed_result["type"] = best.tx_type
-        print("=== USING FAMILY MEMORY ===", best.category, best.tx_type)
-
-    elif memory_candidates["global"]:
-        best = memory_candidates["global"][0]
-        parsed_result["category"] = best.category
-        parsed_result["type"] = best.tx_type
-        print("=== USING GLOBAL MEMORY ===", best.category, best.tx_type)
-
-    # אם אין memory אבל rule-based זיהה קטגוריה - מספיק
-    elif parsed_result["category"] != "אחר":
-        print("=== USING RULE BASED CATEGORY ===", parsed_result["category"])
-
-    # אם עדיין יצא 'אחר' - רק אז נשלח ל-AI
-    else:
-        ai_result = categorize_transaction_text(raw_message)
-        print("=== AI CATEGORY RESULT ===", ai_result)
-
-        if ai_result["amount"] > 0:
-            parsed_result["category"] = ai_result["category"]
-            parsed_result["type"] = ai_result["type"]
-
-    transaction = Transaction(
-        original_text=parsed_result["original_text"],
-        description=parsed_result["description"],
-        amount=parsed_result["amount"],
-        type=parsed_result["type"],
-        category=parsed_result["category"],
-        family_id=family.id,
+    parsed_result = add_transaction_from_text(
+        db,
+        raw_message,
         user_id=user.id,
+        family_id=family.id,
         user_phone=user.phone,
+        base_result=base_result,
     )
-
-    db.add(transaction)
-    db.commit()
-
-    # auto-learning: כל רשומה שנשמרה מחזקת את הזיכרון
-    if merchant_key:
-        upsert_memory(
-            db,
-            scope_type="user",
-            scope_id=user.id,
-            merchant_key=merchant_key,
-            category=parsed_result["category"],
-            tx_type=parsed_result["type"],
-        )
-        upsert_memory(
-            db,
-            scope_type="family",
-            scope_id=family.id,
-            merchant_key=merchant_key,
-            category=parsed_result["category"],
-            tx_type=parsed_result["type"],
-        )
-        upsert_memory(
-            db,
-            scope_type="global",
-            scope_id=None,
-            merchant_key=merchant_key,
-            category=parsed_result["category"],
-            tx_type=parsed_result["type"],
-        )
 
     background_tasks.add_task(
         send_whatsapp_message,

@@ -17,6 +17,7 @@ import {
   CalendarDays,
   BookOpen,
   Repeat,
+  Send,
 } from "lucide-react";
 
 type MonthOption = {
@@ -173,7 +174,15 @@ export default function HomePage() {
   const [newType, setNewType] = useState("expense");
   const [newDay, setNewDay] = useState(1);
   const [newMonth, setNewMonth] = useState(1);
+  const [newYear, setNewYear] = useState(new Date().getFullYear());
   const [newIsRecurring, setNewIsRecurring] = useState(false);
+
+  const [quickText, setQuickText] = useState("");
+  const [quickSending, setQuickSending] = useState(false);
+  const [quickResult, setQuickResult] = useState<{
+    ok: boolean;
+    message: string;
+  } | null>(null);
 
   const [title, setTitle] = useState("כלכלת הבית");
   const [titleDraft, setTitleDraft] = useState("כלכלת הבית");
@@ -504,6 +513,56 @@ export default function HomePage() {
     }
   }
 
+  function openCreateModal() {
+    const today = new Date();
+    setNewDay(today.getDate());
+    setNewMonth(today.getMonth() + 1);
+    setNewYear(today.getFullYear());
+    setNewIsRecurring(false);
+    setShowCreateModal(true);
+  }
+
+  async function sendQuickText(e: React.FormEvent) {
+    e.preventDefault();
+    const text = quickText.trim();
+    if (!text || quickSending) return;
+
+    setQuickSending(true);
+    setQuickResult(null);
+
+    try {
+      const res = await fetchWithAuth(
+        `${backendUrl}/api/transactions/from-text`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text }),
+        }
+      );
+
+      if (!res.ok) {
+        setQuickResult({ ok: false, message: "משהו השתבש, נסה שוב." });
+        return;
+      }
+
+      const data: { success: boolean; message: string } = await res.json();
+      setQuickResult({ ok: data.success, message: data.message });
+
+      if (data.success) {
+        setQuickText("");
+        loadMonths();
+        if (selectedMonth) {
+          loadData(selectedMonth.month, selectedMonth.year);
+        }
+      }
+    } catch (error) {
+      console.error("sendQuickText error:", error);
+      setQuickResult({ ok: false, message: "משהו השתבש, נסה שוב." });
+    } finally {
+      setQuickSending(false);
+    }
+  }
+
   async function createTransaction() {
     if (!selectedMonth) return;
 
@@ -520,7 +579,7 @@ export default function HomePage() {
           type: newType,
           day: newDay,
           month: newMonth,
-          year: selectedMonth.year,
+          year: newYear,
         }),
       });
 
@@ -544,8 +603,6 @@ export default function HomePage() {
       setNewAmount(0);
       setNewCategory(categories[0]);
       setNewType("expense");
-      setNewDay(1);
-      setNewMonth(selectedMonth.month);
       setNewIsRecurring(false);
 
       loadMonths();
@@ -981,19 +1038,55 @@ export default function HomePage() {
         </div>
 
         <div className="space-y-3">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
             <button
-              onClick={() => {
-                setNewIsRecurring(false);
-                setShowCreateModal(true);
-              }}
-              className="rounded-xl bg-green-600 p-2 text-white shadow-sm hover:bg-green-700"
+              onClick={openCreateModal}
+              className="shrink-0 rounded-xl bg-green-600 p-2 text-white shadow-sm hover:bg-green-700"
+              aria-label="הוספת רשומה"
             >
               <Plus size={18} />
             </button>
 
-            <div className="text-right text-lg font-semibold">רשומות</div>
+            <form
+              onSubmit={sendQuickText}
+              className="flex min-w-0 flex-1 items-center gap-1 rounded-xl border border-slate-300 bg-white pl-1 shadow-sm focus-within:border-green-600"
+            >
+              <button
+                type="submit"
+                disabled={quickSending || !quickText.trim()}
+                className="shrink-0 rounded-lg p-1.5 text-green-600 hover:bg-green-50 disabled:text-slate-300"
+                aria-label="שליחה"
+              >
+                <Send size={16} className="-scale-x-100" />
+              </button>
+              <input
+                value={quickText}
+                onChange={(e) => {
+                  setQuickText(e.target.value);
+                  if (quickResult) setQuickResult(null);
+                }}
+                dir="rtl"
+                placeholder="כתוב כמו לבוט: קפה 15"
+                className="min-w-0 flex-1 bg-transparent py-2 pr-3 text-sm outline-none"
+                disabled={quickSending}
+              />
+            </form>
+
+            <div className="shrink-0 text-right text-lg font-semibold">רשומות</div>
           </div>
+
+          {quickResult && (
+            <div
+              dir="rtl"
+              className={`rounded-xl px-3 py-2 text-right text-sm ${
+                quickResult.ok
+                  ? "bg-green-50 text-green-700"
+                  : "bg-amber-50 text-amber-700"
+              }`}
+            >
+              {quickResult.message}
+            </div>
+          )}
 
           <div className="flex items-center justify-between">
             <div className="text-sm text-slate-500">
@@ -1108,7 +1201,7 @@ export default function HomePage() {
                 className="w-full rounded-xl border border-slate-300 p-2"
               >
                 {Array.from(
-                  { length: getDaysInMonth(newMonth, selectedMonth.year) },
+                  { length: getDaysInMonth(newMonth, newYear) },
                   (_, i) => i + 1
                 ).map((day) => (
                   <option key={day} value={day}>

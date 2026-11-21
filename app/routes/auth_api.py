@@ -1,3 +1,4 @@
+import os
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Response
@@ -35,13 +36,22 @@ def _create_session(db: Session, user_id: int, family_id: int) -> str:
     return raw_session_token
 
 
+def _master_login_enabled() -> bool:
+    return os.getenv("MASTER_LOGIN_ENABLED", "").strip().lower() in ("1", "true", "yes")
+
+
 @router.post("/api/auth/master-login")
 def master_login(db: Session = Depends(get_db)):
-    """TEMPORARY: fixed login link with no token. Remove when the bot works again.
+    """כניסת חירום לאתר בלי קישור מהבוט — כבויה כברירת מחדל.
 
+    להפעלה (למשל כשהבוט לא עובד): ב-App Runner להוסיף
+    MASTER_LOGIN_ENABLED=true ולשמור. לכיבוי: למחוק את המשתנה.
     Link: <frontend>/auth?master=1
     Logs in as the first admin user that belongs to a family.
     """
+    if not _master_login_enabled():
+        raise HTTPException(status_code=404, detail="Not found")
+
     user = (
         db.query(User)
         .filter(User.is_admin.is_(True), User.family_id.isnot(None))
