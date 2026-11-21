@@ -3,3 +3,16 @@ frontend/
 .claude/
 __pycache__/
 *.pyc
+
+# local data / stray copies
+*.sql
+backup.sql
+rds_dump_2026-10-11.sql
+home-economics/
+venv/
+.venv/
+.idea/
+.DS_Store
+apprunner-test/
+data.db
+.env
