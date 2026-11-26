@@ -1,3 +1,4 @@
+import os
 from datetime import datetime, timedelta
 from urllib.parse import quote
 
@@ -8,7 +9,7 @@ from app.utils.auth_tokens import generate_raw_token, hash_token
 
 MAGIC_LINK_TTL_MINUTES = 15
 
-FRONTEND_URL = "https://main.d11fqx2zyfwk68.amplifyapp.com"
+FRONTEND_URL = os.getenv("FRONTEND_URL", "https://main.d11fqx2zyfwk68.amplifyapp.com").rstrip("/")
 
 
 def create_magic_link(user_id: int, family_id: int, redirect_to: str = "/") -> str:

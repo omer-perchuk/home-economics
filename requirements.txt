@@ -8,3 +8,5 @@ setuptools
 wheel
 httpx
 apscheduler
+google-auth
+requests

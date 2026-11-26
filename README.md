@@ -163,6 +163,12 @@ https://main.d11fqx2zyfwk68.amplifyapp.com
 קישור
 דשבורד
 
+## כניסה עם Google
+
+אחרי שנכנסת פעם אחת מהקישור של הבוט, פתח את התפריט ולחץ "המשך עם Google".
+מהפעם הבאה אפשר פשוט לפתוח את כתובת האתר ולהיכנס עם חשבון הגוגל בלחיצה אחת.
+חשבון גוגל שלא חובר למשתמש לא יכול להיכנס. הכניסה נשמרת 30 יום מהשימוש האחרון.
+
 ---
 
 # עדכון רשומה
@@ -251,5 +257,34 @@ https://main.d11fqx2zyfwk68.amplifyapp.com
 - מסד הנתונים: PostgreSQL על [Neon](https://neon.com) (מסלול חינמי, us-east-1). הועבר מ-AWS RDS ב-11/10/2026.
   - בשרת, `DATABASE_URL` מצביע על כתובת ה-**pooled** של Neon (`...-pooler...?sslmode=require`).
   - ל-`pg_dump` / `psql` / שינויי סכימה משתמשים בכתובת הישירה (בלי `-pooler`).
-- אין Alembic — שינויי סכימה מבוצעים ידנית מול מסד הנתונים.
+- אין Alembic. עמודות חדשות לטבלאות קיימות מתווספות בעליית השרת ב-`app/db/migrations.py` (רק אם הן חסרות).
+- כניסה עם Google: Google Identity Services בדפדפן, והשרת מאמת את ה-ID token (`app/services/google_auth_service.py`).
+  - בשרת: `GOOGLE_CLIENT_ID`. בפרונט (בזמן build): `NEXT_PUBLIC_GOOGLE_CLIENT_ID`. אותו ערך בשניהם, אין צורך ב-Client Secret.
+  - אופציונלי: `FRONTEND_URL` (הכתובת בקישורים מהבוט), `CORS_EXTRA_ORIGINS` (דומיינים נוספים, מופרדים בפסיק).
+
+## הרצה מקומית (כולל כניסה עם Google)
+
+בלי `DATABASE_URL` השרת משתמש ב-SQLite מקומי (`data.db`), כך שלא נוגעים ב-Neon.
+
+```bash
+# שרת (טרמינל 1, משורש ה-repo)
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+export GOOGLE_CLIENT_ID=1050360616688-ss9f5lujk4oa0edbf8f0u49ign1u80km.apps.googleusercontent.com
+export OPENAI_API_KEY=...   # רק אם רוצים לבדוק הזנה חופשית
+uvicorn app.main:app --reload --port 8000
+
+# פרונט (טרמינל 2)
+cd frontend
+npm install
+NEXT_PUBLIC_API_URL=http://localhost:8000 \
+NEXT_PUBLIC_GOOGLE_CLIENT_ID=1050360616688-ss9f5lujk4oa0edbf8f0u49ign1u80km.apps.googleusercontent.com \
+npm run dev
+
+# קישור כניסה לבדיקה, בלי הבוט (טרמינל 3, משורש ה-repo, עם ה-venv)
+python -m scripts.dev_login_link
+```
+
+פותחים את הקישור שהודפס, בתפריט לוחצים "המשך עם Google", מתנתקים, ונכנסים שוב מ-`http://localhost:3000/auth` עם גוגל.
+כל עוד האפליקציה ב-Google Cloud במצב Testing, רק מיילים שהוגדרו שם כ-Test users יכולים להתחבר.
 - ה-Dockerfile של השרת נמצא ב-`docker/backend/Dockerfile`.

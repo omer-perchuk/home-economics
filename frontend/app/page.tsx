@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
+import AccountMenuSection from "@/components/AccountMenuSection";
 import {
   Pencil,
   Trash2,
@@ -804,6 +805,8 @@ export default function HomePage() {
               <BookOpen size={20} />
               מדריך
             </Link>
+
+            <AccountMenuSection />
           </div>
         </>
       )}

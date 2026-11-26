@@ -29,6 +29,11 @@ class User(Base):
     is_admin = Column(Boolean, default=False, nullable=False)
     is_approved = Column(Boolean, default=False, nullable=False)
 
+    # כניסה עם גוגל: המזהה הקבוע של חשבון הגוגל (sub) והמייל שלו.
+    # ריקים עד שהמשתמש מחבר חשבון גוגל מתוך האתר.
+    google_sub = Column(String, nullable=True, unique=True, index=True)
+    email = Column(String, nullable=True)
+
     created_at = Column(DateTime, default=datetime.utcnow)
 
     family = relationship("Family", back_populates="users")

@@ -1,3 +1,5 @@
+import os
+
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -7,7 +9,8 @@ from app.services.parser_service import parse_expense_text
 from app.services.report_service import get_category_summary
 
 from app.db.database import Base, engine, get_db
-from app.db.models import Transaction
+from app.db.migrations import run_migrations
+from app.db.models import Transaction, User
 from app.db.models import MerchantMemory
 from app.db.models import RecurringTransaction
 from app.db.login_token import LoginToken
@@ -27,13 +30,21 @@ app = FastAPI()
 @app.on_event("startup")
 def startup():
     Base.metadata.create_all(bind=engine)
+    run_migrations(engine)
     start_scheduler()
 
+
+# כתובות נוספות (למשל דומיין חדש) אפשר להוסיף במשתנה CORS_EXTRA_ORIGINS, מופרדות בפסיק.
+_extra_origins = [
+    o.strip() for o in os.getenv("CORS_EXTRA_ORIGINS", "").split(",") if o.strip()
+]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "https://main.d11fqx2zyfwk68.amplifyapp.com",
+        "http://localhost:3000",
+        *_extra_origins,
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -173,8 +184,11 @@ def fix_transaction_families(db: Session = Depends(get_db)):
 
 
 @app.get("/api/me")
-def get_me(session=Depends(get_current_session)):
+def get_me(session=Depends(get_current_session), db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.id == session.user_id).first()
     return {
         "user_id": session.user_id,
-        "family_id": session.family_id
+        "family_id": session.family_id,
+        "google_linked": bool(user and user.google_sub),
+        "google_email": user.email if user else None,
     }
